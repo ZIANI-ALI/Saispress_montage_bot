@@ -31,7 +31,7 @@ FONT_PILL = "Tajawal-Bold.ttf"
 
 CRF = os.environ.get("MONTAGE_CRF", "17")
 PRESET = os.environ.get("MONTAGE_PRESET", "slow")
-TITLE_SECONDS = float(os.environ.get("TITLE_SECONDS", "4.0"))  # ch7al ybqa l titre kaml 9bel ma ykhrej
+TITLE_SECONDS = float(os.environ.get("TITLE_SECONDS", "4.2"))  # ch7al ybqa l titre kaml 9bel ma ykhrej
 
 HDR_TRC = {"smpte2084", "arib-std-b67"}
 COPY_AUDIO = {"aac", "mp3", "alac", "opus"}
@@ -199,7 +199,7 @@ def build_overlay(W: int, H: int, title: str, category: str | None, duration: fl
 
     t_out = max(1.5, min(TITLE_SECONDS, duration - 0.6)) if duration else TITLE_SECONDS
     return Overlay(x0, y0, {"panel": panel, "bar": bar, "pill": pill, "text": text},
-                   (int(min(lefts)) - 2, right + 2), t_out + 0.55, t_out)
+                   (int(min(lefts)) - 2, right + 2), t_out + 0.40, t_out)
 
 
 def _alpha(img: Image.Image, k: float) -> Image.Image:
@@ -221,28 +221,51 @@ def _wipe_mask(size, left: float, right: float, feather: int) -> Image.Image:
     return row.resize((w, h))
 
 
+# Tranches d l panel: (bdya, nihaya b nisba l l 3lw, ittijah d z-zl9a, ta2khir)
+SLICES = ((0.00, 0.28, 1, 0.00), (0.28, 0.72, -1, 0.03), (0.72, 1.00, 1, 0.06))
+
+
+def _panel_slices(panel: Image.Image, out: Image.Image, k_in: float, k_out: float,
+                  t: float, a: float, b: float, to: float) -> None:
+    """Panel f 3 tranches: kol wa7da katzl9 men jenb w katban b chwiya (b7al l exemple)."""
+    bbox = panel.getbbox()
+    if not bbox:
+        return
+    x0, y0, x1, y1 = bbox
+    amp = (x1 - x0) * 0.07
+    for f0, f1, sign, delay in SLICES:
+        ki = _prog(t, a + delay, b + delay) * k_in
+        ko = _prog(t, to + 0.05 + delay / 2, to + 0.22 + delay / 2) if t >= to else 0.0
+        k = ki * (1 - ko)
+        if k <= 0:
+            continue
+        sy0, sy1 = y0 + round((y1 - y0) * f0), y0 + round((y1 - y0) * f1)
+        strip = panel.crop((0, sy0, panel.width, sy1))
+        dx = round(sign * amp * ((1 - ki) - ko))
+        if dx < 0:
+            strip, dx = strip.crop((-dx, 0, strip.width, strip.height)), 0
+        out.alpha_composite(_alpha(strip, k), (dx, sy0))
+
+
 def render_frame(ov: Overlay, t: float) -> Image.Image:
     L = ov.layers
     ow, oh = L["panel"].size
     out = Image.new("RGBA", (ow, oh), (0, 0, 0, 0))
     to = ov.t_out
     tl, tr = ov.text_box
-    feather = max(8, (tr - tl) // 12)
+    feather = max(8, (tr - tl) // 14)
 
-    # dkhla
-    bar_k = _prog(t, 0.10, 0.32)
-    pill_k = _prog(t, 0.15, 0.38)
-    panel_k = _prog(t, 0.18, 0.45)
-    reveal = _prog(t, 0.40, 0.78)
-    # khrja
-    hide = _prog(t, to, to + 0.35)
+    # dkhla (30 fps: pill f3, khatt f3-9, panel f7-14, ktaba f9-14)
+    pill_k = _prog(t, 0.07, 0.25)
+    bar_k = _prog(t, 0.10, 0.30)
+    reveal = _prog(t, 0.28, 0.50)
+    # khrja (~4.2s): ktaba katmsa7 men l issar l l imin, panel w l khatt w l pill kaytfaw
+    hide = _prog(t, to, to + 0.15) if t >= to else 0.0
     if t >= to:
-        panel_k *= 1 - _prog(t, to + 0.15, to + 0.45)
-        pill_k *= 1 - _prog(t, to + 0.20, to + 0.45)
-        bar_k *= 1 - _prog(t, to + 0.25, to + 0.50)
+        pill_k *= 1 - _prog(t, to + 0.08, to + 0.28)
+        bar_k *= 1 - _prog(t, to + 0.03, to + 0.18)
 
-    if panel_k > 0:
-        out.alpha_composite(_alpha(L["panel"], panel_k))
+    _panel_slices(L["panel"], out, 1.0, 1.0, t, 0.22, 0.45, to)
     if bar_k > 0:
         bar = L["bar"]
         bbox = bar.getbbox()
@@ -255,10 +278,10 @@ def render_frame(ov: Overlay, t: float) -> Image.Image:
     if pill_k > 0:
         out.alpha_composite(_alpha(L["pill"], pill_k))
     if reveal > 0 and hide < 1:
-        # l kechf men l imin l l issar, l khba men l issar l l imin
-        left = tr - (tr - tl + feather) * reveal
-        left = left + (tr - left + feather) * hide
-        m = _wipe_mask((ow, oh), left, tr + feather, feather)
+        # dkhla: katban men l issar l l imin. khrja: katmsa7 f nefs l ittijah.
+        right = tl - feather + (tr - tl + 2 * feather) * reveal
+        left = tl - feather + (tr - tl + 2 * feather) * hide
+        m = _wipe_mask((ow, oh), left, right, feather)
         txt = L["text"].copy()
         txt.putalpha(ImageChops.multiply(txt.getchannel("A"), m))
         out.alpha_composite(txt)

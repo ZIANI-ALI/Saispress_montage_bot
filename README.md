@@ -24,9 +24,9 @@ b animation, **b nefs l qualité**.
   (1080×1920, wla 720×1280 l videowat sghar): l video kamla f l wst, w fo9 w t7t fond flou.
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
-  - Dkhla ~0.8s, w l titre kaytkchef men l imin l l issar.
-  - Kaybqa `TITLE_SECONDS` (4s).
-  - Khrja ~0.5s.
+  - Dkhla ~0.5s: panel kaydkhel b 3 tranches, w l titre kaytkchef men l issar l l imin.
+  - Kaybqa `TITLE_SECONDS` (4.2s).
+  - Khrja ~0.35s.
 - **Qualité:**
   - x264 CRF 17 preset slow (visually lossless), nefs l fps.
   - L son kaytnsakh kif howa.
@@ -51,7 +51,7 @@ Bach t3ref ID dyal chi wa7ed: ysifet message l @userinfobot.
 ### Variables ikhtiyariyin
 | Variable | Default | Chno kaydir |
 |---|---|---|
-| `TITLE_SECONDS` | `4.0` | ch7al ybqa l titre kaml |
+| `TITLE_SECONDS` | `4.2` | ch7al ybqa l titre kaml |
 | `MONTAGE_CRF` | `17` | qualité (a9el = a7san w fichier kber) |
 | `MONTAGE_PRESET` | `slow` | `medium` = asra3, chwiya kber f l 7ajm |
 | `RUN_MINUTES` | `330` | 3omr kol run |

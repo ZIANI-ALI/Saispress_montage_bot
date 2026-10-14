@@ -52,7 +52,7 @@ jobs:
           RUN_MINUTES: ${{ inputs.minutes || vars.RUN_MINUTES || '330' }}
           MONTAGE_PRESET: ${{ vars.MONTAGE_PRESET || 'slow' }}
           MONTAGE_CRF: ${{ vars.MONTAGE_CRF || '17' }}
-          TITLE_SECONDS: ${{ vars.TITLE_SECONDS || '4.0' }}
+          TITLE_SECONDS: ${{ vars.TITLE_SECONDS || '4.2' }}
 
       - name: Lanci run jay (24/24)
         if: ${{ !cancelled() && vars.VIDEO_BOT_ENABLED == 'true' }}
