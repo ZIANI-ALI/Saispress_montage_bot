@@ -30,6 +30,7 @@ FONT_TITLE = "Tajawal-ExtraBold.ttf"
 FONT_PILL = "Tajawal-Bold.ttf"
 PAD_T, PAD_B, LINE_H = 19, 26, 1.12
 MIN_W = 1080  # 3ard l output f l a9al
+TEXT_W = 440  # a9sa 3ard d l titre (b 720), mcentri f l panel
 
 CRF = os.environ.get("MONTAGE_CRF", "17")
 PRESET = os.environ.get("MONTAGE_PRESET", "slow")
@@ -151,9 +152,9 @@ def _prog(t: float, a: float, b: float) -> float:
 def build_overlay(W: int, H: int, title: str, category: str | None, duration: float) -> Overlay:
     s = W / 720  # l exemple 720x1280, kolchi kaytkber b nisba
     px0, px1 = round(67 * s), round(680 * s)          # panel
-    pad_r, pad_l = round(17 * s), round(16 * s)
+    pad_r = round(17 * s)
     pad_t, pad_b = round(PAD_T * s), round(PAD_B * s)
-    fnt, lines = _fit(title, px1 - px0 - pad_r - pad_l, s)
+    fnt, lines = _fit(title, round(TEXT_W * s), s)
     asc, desc = fnt.getmetrics()
     lh = round(fnt.size * LINE_H)
     ptop_abs = round(768 * s)
@@ -192,7 +193,8 @@ def build_overlay(W: int, H: int, title: str, category: str | None, duration: fl
 
     text = layer()
     d = ImageDraw.Draw(text)
-    right = ox(px1) - pad_r
+    bw = max(_width(ln, fnt) for ln in lines)  # l block d l titre f l wost d l panel
+    right = min(ox(px1) - pad_r, ox(px0) + (px1 - px0 + bw) // 2)
     top = pt + pad_t
     lefts = []
     for i, ln in enumerate(lines):
