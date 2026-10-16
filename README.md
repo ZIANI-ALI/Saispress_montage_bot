@@ -21,7 +21,7 @@ b animation, **b nefs l qualité**.
 ## Chno kaydir l montage
 
 - **Format:** ila l video deja 9:16, kaybqa b nefs l résolution. Sinon kaytdar f canvas 9:16
-  (1080×1920, wla 720×1280 l videowat sghar): l video kamla f l wst, w fo9 w t7t fond flou.
+  (1080×1920, wla 720×1280 l videowat sghar): zoom in 7tta t3mer l cadre kaml (crop f l wst), bla flou.
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
   - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.

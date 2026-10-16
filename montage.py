@@ -321,13 +321,9 @@ def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay) -
     if native:
         g = f"[0:v]{pre},scale={W}:{H}:flags=lanczos,setsar=1[base];"
     else:
-        # fond flou (mn nefs l video) w l video kamla f l wst
-        bw, bh = W // 8, H // 8
-        g = (f"[0:v]{pre},split[a][b];"
-             f"[a]scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},"
-             f"gblur=sigma=6,eq=brightness=-0.10:saturation=0.9,scale={W}:{H}:flags=bicubic,setsar=1[bg];"
-             f"[b]scale={W}:{H}:force_original_aspect_ratio=decrease:flags=lanczos,setsar=1[fg];"
-             f"[bg][fg]overlay=(W-w)/2:(H-h)/2[base];")
+        # zoom in 7tta l video t3mer l cadre kaml (crop f l wst), bla fond flou
+        g = (f"[0:v]{pre},scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,"
+             f"crop={W}:{H},setsar=1[base];")
     lx, ly = logo_xy
     g += (f"[base][1:v]overlay={lx}:{ly}[lg];"
           f"[lg][2:v]overlay={ov.x}:{ov.y}:eof_action=pass,format=yuv420p[v]")
