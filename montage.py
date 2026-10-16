@@ -5,7 +5,7 @@ L animation (b7al l exemple d l brand):
   khrja: l titre kaytkhba men l issar l l imin, mn ba3d l panel w l pill w l khatt.
 L logo kaybqa l video kamla.
 
-Qualité: nefs l résolution (ila l video deja 9:16), x264 CRF 17 preset slow, l son kaytnsakh kif howa.
+Qualité: f l a9al 1080x1920 (nefs l résolution ila l video 9:16 kbira), x264 CRF 17 preset slow, l son kaytnsakh kif howa.
 Videowat HDR (iPhone) kaytbddlo l SDR b tone-mapping bach l alwan ma ybhtouch.
 """
 import json
@@ -29,6 +29,7 @@ PANEL_ALPHA = 240
 FONT_TITLE = "Tajawal-ExtraBold.ttf"
 FONT_PILL = "Tajawal-Bold.ttf"
 PAD_T, PAD_B, LINE_H = 19, 26, 1.12
+MIN_W = 1080  # 3ard l output f l a9al
 
 CRF = os.environ.get("MONTAGE_CRF", "17")
 PRESET = os.environ.get("MONTAGE_PRESET", "slow")
@@ -299,11 +300,12 @@ def _even(x: float) -> int:
 
 
 def out_size(p: Probe) -> tuple[int, int, bool]:
-    """(W, H, deja_9_16). Ila l video deja 9:16 kanbqaw 3la nefs l résolution."""
-    if abs(p.width / p.height - 9 / 16) < 0.02:
+    """(W, H, deja_9_16). F l a9al 1080x1920: l titre w l logo kaytrsmo b qualité kamla
+    w Instagram ma ykbbrhomch (kayfer9ou). Ila l video deja 9:16 w kbira, kanbqaw 3la résolution dyalha."""
+    native = abs(p.width / p.height - 9 / 16) < 0.02
+    if native and p.width >= MIN_W:
         return _even(p.width), _even(p.height), True
-    W = 1080 if max(p.width, p.height) >= 1280 else 720
-    return W, W * 16 // 9, False
+    return MIN_W, MIN_W * 16 // 9, native
 
 
 def tonemap_available() -> bool:
