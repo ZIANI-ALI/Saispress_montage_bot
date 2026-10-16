@@ -28,6 +28,7 @@ WHITE = (255, 255, 255)
 PANEL_ALPHA = 240
 FONT_TITLE = "Tajawal-ExtraBold.ttf"
 FONT_PILL = "Tajawal-Bold.ttf"
+PAD_T, PAD_B, LINE_H = 19, 26, 1.12
 
 CRF = os.environ.get("MONTAGE_CRF", "17")
 PRESET = os.environ.get("MONTAGE_PRESET", "slow")
@@ -116,7 +117,7 @@ def _wrap(text: str, fnt, maxw: float) -> list[str]:
 
 def _fit(text: str, maxw: float, s: float):
     """3 stoura f l a9sa b taille kbira; ila ma dkhelch kanssghro, w f l akhir 4 stoura."""
-    for max_lines, hi, lo in ((3, 37, 30), (4, 30, 25)):
+    for max_lines, hi, lo in ((3, 50, 36), (4, 36, 30)):
         for size in range(hi, lo - 1, -1):
             fnt = _font(FONT_TITLE, round(size * s))
             lines = _wrap(text, fnt, maxw)
@@ -148,18 +149,18 @@ def _prog(t: float, a: float, b: float) -> float:
 
 def build_overlay(W: int, H: int, title: str, category: str | None, duration: float) -> Overlay:
     s = W / 720  # l exemple 720x1280, kolchi kaytkber b nisba
-    px0, px1 = round(62 * s), round(650 * s)          # panel
-    pad_r, pad_l = round(9 * s), round(18 * s)
-    pad_t, pad_b = round(24 * s), round(40 * s)
+    px0, px1 = round(67 * s), round(680 * s)          # panel
+    pad_r, pad_l = round(17 * s), round(16 * s)
+    pad_t, pad_b = round(PAD_T * s), round(PAD_B * s)
     fnt, lines = _fit(title, px1 - px0 - pad_r - pad_l, s)
     asc, desc = fnt.getmetrics()
-    lh = round(fnt.size * 1.18)
-    ptop_abs = round(745 * s)
+    lh = round(fnt.size * LINE_H)
+    ptop_abs = round(768 * s)
     ph = pad_t + lh * (len(lines) - 1) + asc + desc + pad_b
-    bar_x0, bar_x1 = px1 + round(2 * s), px1 + round(8 * s)
+    bar_x0, bar_x1 = px1 + round(1 * s), px1 + round(8 * s)
 
-    pill_h = round(27 * s)
-    pill_gap = round(4 * s)
+    pill_h = round(28 * s)
+    pill_gap = round(1 * s)
     x0 = px0
     x1 = bar_x1 + round(2 * s)
     y0 = ptop_abs - pill_gap - pill_h
@@ -174,18 +175,18 @@ def build_overlay(W: int, H: int, title: str, category: str | None, duration: fl
     ImageDraw.Draw(panel).rectangle((0, pt, ox(px1) - 1, oh - 1), fill=(*NAVY, PANEL_ALPHA))
 
     bar = layer()
-    ImageDraw.Draw(bar).rectangle((ox(bar_x0), pt + round(26 * s), ox(bar_x1) - 1, oh - round(40 * s)),
+    ImageDraw.Draw(bar).rectangle((ox(bar_x0), pt + round(32 * s), ox(bar_x1) - 1, oh - round(38 * s)),
                                   fill=(*GOLD, 255))
 
     pill = layer()
     if category:
-        pf = _font(FONT_PILL, round(19 * s))
-        right = ox(round(643 * s))
+        pf = _font(FONT_PILL, round(22 * s))
+        right = ox(round(672 * s))
         tw = _width(category, pf)
-        left = right - tw - 2 * round(28 * s)
+        left = right - tw - 2 * round(15 * s)
         d = ImageDraw.Draw(pill)
         d.rounded_rectangle((left, 0, right, pill_h), radius=pill_h // 2, fill=(*GOLD, 255))
-        d.text((right - round(28 * s), pill_h / 2 + round(1 * s)), category, font=pf, fill=NAVY,
+        d.text((right - round(15 * s), pill_h / 2 + round(1 * s)), category, font=pf, fill=NAVY,
                anchor="rm", direction="rtl")
 
     text = layer()
@@ -210,41 +211,20 @@ def _alpha(img: Image.Image, k: float) -> Image.Image:
     return out
 
 
-def _wipe_mask(size, left: float, right: float, feather: int) -> Image.Image:
-    """Mask kayban ghir bin left w right, b 7afa nay3a."""
+def _row_mask(size, spans) -> Image.Image:
+    """Mask men saff wa7d: spans = [(left, right, 9owwa 0..1)], kayjm3o (max 1)."""
     w, h = size
     row = Image.new("L", (w, 1), 0)
     px = row.load()
     for x in range(w):
-        a = min((x - left) / feather + 1, (right - x) / feather + 1)
-        px[x, 0] = int(255 * min(1.0, max(0.0, a)))
+        v = sum(k for l, r, k in spans if l <= x < r)
+        px[x, 0] = int(255 * min(1.0, v))
     return row.resize((w, h))
 
 
-# Tranches d l panel: (bdya, nihaya b nisba l l 3lw, ittijah d z-zl9a, ta2khir)
-SLICES = ((0.00, 0.28, 1, 0.00), (0.28, 0.72, -1, 0.03), (0.72, 1.00, 1, 0.06))
-
-
-def _panel_slices(panel: Image.Image, out: Image.Image, k_in: float, k_out: float,
-                  t: float, a: float, b: float, to: float) -> None:
-    """Panel f 3 tranches: kol wa7da katzl9 men jenb w katban b chwiya (b7al l exemple)."""
-    bbox = panel.getbbox()
-    if not bbox:
-        return
-    x0, y0, x1, y1 = bbox
-    amp = (x1 - x0) * 0.07
-    for f0, f1, sign, delay in SLICES:
-        ki = _prog(t, a + delay, b + delay) * k_in
-        ko = _prog(t, to + 0.05 + delay / 2, to + 0.22 + delay / 2) if t >= to else 0.0
-        k = ki * (1 - ko)
-        if k <= 0:
-            continue
-        sy0, sy1 = y0 + round((y1 - y0) * f0), y0 + round((y1 - y0) * f1)
-        strip = panel.crop((0, sy0, panel.width, sy1))
-        dx = round(sign * amp * ((1 - ki) - ko))
-        if dx < 0:
-            strip, dx = strip.crop((-dx, 0, strip.width, strip.height)), 0
-        out.alpha_composite(_alpha(strip, k), (dx, sy0))
+# Panel f 3 tbaqat (b7al l exemple): sbagha khfifa 3la l 3ard kaml, men ba3d tba9a
+# katmsa7 men l issar l l imin, men ba3d tba9a lkhra m3a l ktaba.
+LAYERS = (0.37, 0.27, 0.36)
 
 
 def render_frame(ov: Overlay, t: float) -> Image.Image:
@@ -252,36 +232,45 @@ def render_frame(ov: Overlay, t: float) -> Image.Image:
     ow, oh = L["panel"].size
     out = Image.new("RGBA", (ow, oh), (0, 0, 0, 0))
     to = ov.t_out
-    tl, tr = ov.text_box
-    feather = max(8, (tr - tl) // 14)
+    bbox = L["panel"].getbbox()
+    px0, px1 = (bbox[0], bbox[2]) if bbox else (0, ow)
+    pw = px1 - px0
+    out_on = t >= to
 
-    # dkhla (30 fps: pill f3, khatt f3-9, panel f7-14, ktaba f9-14)
-    pill_k = _prog(t, 0.07, 0.25)
-    bar_k = _prog(t, 0.10, 0.30)
-    reveal = _prog(t, 0.28, 0.50)
-    # khrja (~4.2s): ktaba katmsa7 men l issar l l imin, panel w l khatt w l pill kaytfaw
-    hide = _prog(t, to, to + 0.15) if t >= to else 0.0
-    if t >= to:
-        pill_k *= 1 - _prog(t, to + 0.08, to + 0.28)
-        bar_k *= 1 - _prog(t, to + 0.03, to + 0.18)
+    # dkhla (30 fps): pill w khatt f3-8, sbagha f3-5, tba9a 2 f5-8, ktaba f8-13
+    pill_k = _prog(t, 0.07, 0.20)
+    bar_k = _prog(t, 0.08, 0.25)
+    base_k = _prog(t, 0.10, 0.17)
+    w1_in, w2_in = _prog(t, 0.15, 0.27), _prog(t, 0.25, 0.43)
+    # khrja: nefs l 7araka b l39s, kolchi kaymsa7 men l issar l l imin
+    w2_out = _prog(t, to, to + 0.13) if out_on else 0.0
+    w1_out = _prog(t, to + 0.07, to + 0.20) if out_on else 0.0
+    if out_on:
+        base_k *= 1 - _prog(t, to + 0.15, to + 0.23)
+        bar_k *= 1 - _prog(t, to + 0.05, to + 0.20)
+        pill_k *= 1 - _prog(t, to + 0.15, to + 0.27)
 
-    _panel_slices(L["panel"], out, 1.0, 1.0, t, 0.22, 0.45, to)
+    e1 = (px0 + pw * w1_out, px0 + pw * w1_in)
+    e2 = (px0 + pw * w2_out, px0 + pw * w2_in)
+    panel_m = _row_mask((ow, oh), [(px0, px1, LAYERS[0] * base_k), (*e1, LAYERS[1]), (*e2, LAYERS[2])])
+    pan = L["panel"].copy()
+    pan.putalpha(ImageChops.multiply(pan.getchannel("A").point(lambda v: 255 if v else 0), panel_m))
+    out.alpha_composite(pan)
+
     if bar_k > 0:
         bar = L["bar"]
-        bbox = bar.getbbox()
-        if bbox:
-            cy = (bbox[1] + bbox[3]) / 2
-            half = (bbox[3] - bbox[1]) / 2 * bar_k
+        bb = bar.getbbox()
+        if bb:
+            cy = (bb[1] + bb[3]) / 2
+            half = (bb[3] - bb[1]) / 2 * bar_k
             m = Image.new("L", bar.size, 0)
             ImageDraw.Draw(m).rectangle((0, round(cy - half), ow, round(cy + half)), fill=255)
             out.alpha_composite(Image.composite(bar, Image.new("RGBA", bar.size), m))
     if pill_k > 0:
         out.alpha_composite(_alpha(L["pill"], pill_k))
-    if reveal > 0 and hide < 1:
-        # dkhla: katban men l issar l l imin. khrja: katmsa7 f nefs l ittijah.
-        right = tl - feather + (tr - tl + 2 * feather) * reveal
-        left = tl - feather + (tr - tl + 2 * feather) * hide
-        m = _wipe_mask((ow, oh), left, right, feather)
+    # ktaba: katban m3a tba9a 3 (nefs l 7afa 9ad9a), katmsa7 m3aha f l khrja
+    if e2[1] > e2[0]:
+        m = _row_mask((ow, oh), [(*e2, 1.0)])
         txt = L["text"].copy()
         txt.putalpha(ImageChops.multiply(txt.getchannel("A"), m))
         out.alpha_composite(txt)

@@ -24,7 +24,7 @@ b animation, **b nefs l qualité**.
   (1080×1920, wla 720×1280 l videowat sghar): l video kamla f l wst, w fo9 w t7t fond flou.
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
-  - Dkhla ~0.5s: panel kaydkhel b 3 tranches, w l titre kaytkchef men l issar l l imin.
+  - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.
   - Kaybqa `TITLE_SECONDS` (4.2s).
   - Khrja ~0.35s.
 - **Qualité:**
