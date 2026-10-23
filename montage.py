@@ -389,7 +389,7 @@ def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: s
 
     # header: logo l imin, #rkn l issar (ta7t interface d Reels ~230px)
     lg = Image.open(ASSETS / "logo.png").convert("RGBA")
-    lw = 230
+    lw = 190
     lg = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
     im.alpha_composite(lg, (FW - 60 - lw, 250))
     tag_f = _font(FONT_PILL, 40)
