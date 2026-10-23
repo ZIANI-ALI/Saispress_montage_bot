@@ -13,6 +13,7 @@ L logo kaybqa l video kamla.
 Qualité: f l a9al 1080x1920 (nefs l résolution ila l video 9:16 kbira), x264 CRF 17 preset slow, l son kaytnsakh kif howa.
 Videowat HDR (iPhone) kaytbddlo l SDR b tone-mapping bach l alwan ma ybhtouch.
 """
+import itertools
 import json
 import math
 import os
@@ -122,15 +123,60 @@ def _wrap(text: str, fnt, maxw: float) -> list[str]:
     return lines + [cur] if cur else lines
 
 
+ORPHAN_SHRINK = 0.75  # ster lakher fih klma wa7da: kanssghro l ktaba (7tta had nisba) bach yn9as ster
+
+
+def _balance(text: str, fnt, maxw: float, n: int) -> list[str] | None:
+    """n stoura mtwazniin (b7al b7al f t-tol, bla faraghat kbar), w bla ster fih klma wa7da ila mmkin."""
+    words = text.split()
+    if n <= 1 or len(words) <= n:
+        return None
+    width: dict[tuple[int, int], float] = {}
+
+    def w(a: int, b: int) -> float:
+        if (a, b) not in width:
+            width[a, b] = _width(" ".join(words[a:b]), fnt)
+        return width[a, b]
+    best, best_key = None, None
+    for cuts in itertools.combinations(range(1, len(words)), n - 1):
+        bounds = (0, *cuts, len(words))
+        ws = [w(bounds[i], bounds[i + 1]) for i in range(n)]
+        if max(ws) > maxw:
+            continue
+        lone = sum(bounds[i + 1] - bounds[i] == 1 for i in range(n))
+        key = (lone, max(ws) - min(ws), max(ws))
+        if best_key is None or key < best_key:
+            best, best_key = bounds, key
+    return [" ".join(words[best[i]:best[i + 1]]) for i in range(n)] if best else None
+
+
+def _fit_title(text: str, name: str, maxw: float, steps) -> tuple:
+    """steps = [(max_lines, hi, lo), ...]: akbar taille li kaydkhel fiha titre. Ila ster lakher fih ghir klma
+    wa7da, kanssghro (7tta ORPHAN_SHRINK) bach ykhrej b ster a9al. Mn ba3d stoura mtwazniin (_balance)."""
+    sizes = [(size, max_lines) for max_lines, hi, lo in steps for size in range(hi, lo - 1, -1)]
+    pick = None
+    for size, max_lines in sizes:
+        lines = _wrap(text, _font(name, size), maxw)
+        if len(lines) <= max_lines:
+            pick = (size, lines)
+            break
+    if pick is None:
+        size = sizes[-1][0]
+        return _font(name, size), _wrap(text, _font(name, size), maxw)
+    size, lines = pick
+    n = len(lines)
+    if n > 1 and len(lines[-1].split()) == 1:
+        for smaller in sorted({sz for sz, _ in sizes if size * ORPHAN_SHRINK <= sz < size}, reverse=True):
+            if len(_wrap(text, _font(name, smaller), maxw)) < n:
+                size, n = smaller, n - 1
+                break
+    fnt = _font(name, size)
+    return fnt, _balance(text, fnt, maxw, n) or _wrap(text, fnt, maxw)
+
+
 def _fit(text: str, maxw: float, s: float):
     """3 stoura f l a9sa b taille kbira; ila ma dkhelch kanssghro, w f l akhir 4 stoura."""
-    for max_lines, hi, lo in ((3, 50, 36), (4, 36, 30)):
-        for size in range(hi, lo - 1, -1):
-            fnt = _font(FONT_TITLE, round(size * s))
-            lines = _wrap(text, fnt, maxw)
-            if len(lines) <= max_lines:
-                return fnt, lines
-    return fnt, lines
+    return _fit_title(text, FONT_TITLE, maxw, [(3, round(50 * s), round(36 * s)), (4, round(36 * s), round(30 * s))])
 
 
 # ───────────────────────── overlay d titre ─────────────────────────
@@ -325,16 +371,6 @@ def video_box(p: Probe) -> tuple[int, int, int, int]:
     return (FW - w) // 2, VID_TOP, w, h
 
 
-def _fit_lines(text: str, name: str, maxw: float, steps) -> tuple:
-    for max_lines, hi, lo in steps:
-        for size in range(hi, lo - 1, -2):
-            fnt = _font(name, size)
-            lines = _wrap(text, fnt, maxw)
-            if len(lines) <= max_lines:
-                return fnt, lines
-    return fnt, lines
-
-
 def _chevrons(d: ImageDraw.ImageDraw, x: int, cy: int, size: int, fill) -> None:
     """«‹‹» l imin d l hook (bla glyph f l font)."""
     for k in (0, 1):
@@ -372,7 +408,7 @@ def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: s
     if not title:
         return im
     if urgent:  # b7al l akhbar 3ajila: block 7mer ta7t l video, label «عاجل», titre byed
-        fnt, lines = _fit_lines(title, FONT_TITLE, TEXT_R - TEXT_L, ((3, 70, 58), (4, 58, 46)))
+        fnt, lines = _fit_title(title, FONT_TITLE, TEXT_R - TEXT_L, ((3, 70, 58), (4, 58, 46)))
         lh = round(fnt.size * 1.32)
         y_text = top + 96
         bottom = min(FH - 200, max(y_text + lh * len(lines) + 70, top + 380))
@@ -394,7 +430,7 @@ def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: s
         y += 52 + 34
     room = TEXT_MAX_Y - y
     for steps in (((2, 84, 70), (3, 74, 60)), ((3, 60, 50), (4, 52, 44))):
-        fnt, lines = _fit_lines(title, FONT_TITLE, TEXT_R - TEXT_L, steps)
+        fnt, lines = _fit_title(title, FONT_TITLE, TEXT_R - TEXT_L, steps)
         lh = round(fnt.size * 1.42)
         if lh * len(lines) <= room:
             break
