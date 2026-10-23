@@ -52,8 +52,10 @@ HELP = (
     "2. F caption kteb:\n"
     "<code>#دولي\nالعنوان ديال الخبر</code>\n"
     "(l satr d #rkn ikhtiyari)\n\n"
-    "Ila ma ktebtich caption, ghansowlek 3la l 3onwan.\n"
-    "Mn ba3d l montage, «✏️ Bddel titre» kat3awed b titre jdid.\n"
+    "Bot kaysowlek: <b>🏷 Ghir logo</b> wla <b>📰 Logo + titre</b>.\n"
+    "Ila khtariti titre w ma ktebtich caption, ghansowlek 3la l 3onwan.\n"
+    "Mn ba3d l montage: «✏️ Bddel titre» w «🔁» (ghir logo ⇄ logo + titre) bla ma t3awed tsifet l video.\n"
+    "M3a l video katji <b>cover</b> (JPEG) l Reels.\n"
     "/cancel: tlghi l 3onwan li kantsenna."
 )
 
@@ -70,6 +72,8 @@ class Job:
     created: float = field(default_factory=time.time)
     hook: str | None = None     # jomla sghira fo9 titre (Gemini), l nefs titre
     hook_for: str = ""
+    with_title: bool | None = None  # None: mazal ma khtarch (🏷 ghir logo / 📰 logo + titre)
+    queued: bool = False
 
 
 jobs: dict[str, Job] = {}
@@ -191,7 +195,22 @@ async def make_hook(title: str, category: str | None) -> str | None:
 
 # ───────────────────────── updates ─────────────────────────
 
+CHOICE = "Chno ndir l had l video?"
+
+
+def choice_buttons(job_id: str) -> list:
+    return [[{"text": "🏷 Ghir logo", "callback_data": f"lg:{job_id}"},
+             {"text": "📰 Logo + titre", "callback_data": f"tt:{job_id}"}]]
+
+
+async def ask_title(job: Job) -> None:
+    waiting_title[job.chat_id] = job.id
+    await say(job.chat_id, "✍️ Sifet l 3onwan.\n(Ila bghiti l rkn: <code>#دولي</code> f satr lowel)",
+              reply_to=job.msg_id)
+
+
 async def enqueue(job: Job) -> None:
+    job.queued = True
     await queue.put(job.id)
     ahead = queue.qsize() - 1 + (1 if busy else 0)
     if ahead:
@@ -222,12 +241,7 @@ async def on_message(msg: dict) -> None:
         if msg.get("video") and not msg.get("document"):
             await say(chat_id, "ℹ️ Sifetti l video ka «Vidéo»: Telegram ymken compressaha. "
                                "L a7san ka Fichier (📎 → Fichier).", reply_to=msg["message_id"])
-        if job.title:
-            await enqueue(job)
-        else:
-            waiting_title[chat_id] = job.id
-            await say(chat_id, "✍️ Sifet l 3onwan.\n(Ila bghiti l rkn: <code>#دولي</code> f satr lowel)",
-                      reply_to=msg["message_id"])
+        await say(chat_id, CHOICE, reply_to=msg["message_id"], buttons=choice_buttons(job.id))
         return
 
     if text and chat_id in waiting_title:
@@ -239,7 +253,7 @@ async def on_message(msg: dict) -> None:
             waiting_title[chat_id] = job.id
             await say(chat_id, "❌ 3onwan khawi, 3awed.")
             return
-        job.title = title
+        job.title, job.with_title = title, True
         if category:  # titre jdid bla rkn: kankhliw l rkn l 9dim
             job.category = category
         await enqueue(job)
@@ -252,11 +266,44 @@ async def on_message(msg: dict) -> None:
 async def on_callback(cb: dict) -> None:
     data = cb.get("data", "")
     chat_id = cb["message"]["chat"]["id"]
+    if data[:3] in ("lg:", "tt:"):  # ikhtiyar lowel: ghir logo / logo + titre
+        job = jobs.get(data[3:])
+        if not job or job.with_title is not None:
+            await api("answerCallbackQuery", callback_query_id=cb["id"], text="Deja khtariti.")
+            return
+        job.with_title = data.startswith("tt:")
+        await api("answerCallbackQuery", callback_query_id=cb["id"])
+        await api("editMessageText", chat_id=chat_id, message_id=cb["message"]["message_id"], parse_mode="HTML",
+                  text=f"{CHOICE}\n→ <b>{'📰 Logo + titre' if job.with_title else '🏷 Ghir logo'}</b>")
+        if job.with_title and not job.title:
+            await ask_title(job)
+        else:
+            await enqueue(job)
+        return
+    if data.startswith("sw:"):  # mor l montage: ghir logo ⇄ logo + titre
+        job = jobs.get(data[3:])
+        if not job or not (job.src and job.src.exists()):
+            await api("answerCallbackQuery", callback_query_id=cb["id"],
+                      text="L original ma b9ach, 3awed sifet l video.", show_alert=True)
+            return
+        if job.queued:
+            await api("answerCallbackQuery", callback_query_id=cb["id"], text="Mazal kaytmonta.")
+            return
+        job.with_title = not job.with_title
+        await api("answerCallbackQuery", callback_query_id=cb["id"])
+        if job.with_title and not job.title:
+            await ask_title(job)
+        else:
+            await enqueue(job)
+        return
     if data.startswith("rt:"):
         job = jobs.get(data[3:])
         if not job or not (job.src and job.src.exists()):
             await api("answerCallbackQuery", callback_query_id=cb["id"],
                       text="L original ma b9ach, 3awed sifet l video.", show_alert=True)
+            return
+        if job.queued:
+            await api("answerCallbackQuery", callback_query_id=cb["id"], text="Mazal kaytmonta.")
             return
         waiting_title[chat_id] = job.id
         await api("answerCallbackQuery", callback_query_id=cb["id"])
@@ -342,30 +389,39 @@ async def process(client: TelegramClient, job: Job) -> None:
         asyncio.run_coroutine_threadsafe(tick("🎬 Montage…", x), loop)
 
     hook = None
-    if montage.framed(await asyncio.to_thread(montage.probe, job.src)) and not montage.urgent_cat(job.category):
+    if job.with_title and montage.framed(await asyncio.to_thread(montage.probe, job.src)) \
+            and not montage.urgent_cat(job.category):
         if job.hook_for != job.title:  # titre jdid (✏️): hook jdid
             job.hook, job.hook_for = await make_hook(job.title, job.category), job.title
         hook = job.hook
         log.info("[job %s] frame 9:16 · hook: %s", job.id, "ah" if hook else "la")
     t1 = time.time()
-    p = await asyncio.to_thread(montage.montage, job.src, out, job.title, job.category, prog, hook)
+    p = await asyncio.to_thread(montage.montage, job.src, out, job.title, job.category, prog, hook,
+                                bool(job.with_title))
     t_mt = time.time() - t1
 
     await edit(job.chat_id, status, "⬆️ Kansifet l video…")
     thumb = await asyncio.to_thread(montage.thumbnail, out, out.with_suffix(".jpg"), min(1.0, p.duration / 2))
+    cover = await asyncio.to_thread(montage.cover_image, out, out.with_name(f"saispress_cover_{job.id}.jpg"),
+                                    montage.cover_time(p, bool(job.with_title)))
     chat = await msg_chat(client, job)
     size_mb = out.stat().st_size / 1024**2
     W, H, _ = montage.out_size(p)
-    caption = (f"{job.title}\n\n" + (f"Hook: {hook}\n" if hook else "")
+    caption = ((f"{job.title}\n\n" if job.with_title else "🏷 Ghir logo\n\n") + (f"Hook: {hook}\n" if hook else "")
                + f"{W}×{H} · {p.fps:.0f} fps · {size_mb:.1f} MB")
-    await client.send_file(
+    buttons = ([Button.inline("✏️ Bddel titre", data=f"rt:{job.id}".encode())] if job.with_title else []) + \
+        [Button.inline("🔁 Ghir logo" if job.with_title else "🔁 Logo + titre", data=f"sw:{job.id}".encode())]
+    sent = await client.send_file(
         chat, str(out), caption=caption[:1000], parse_mode=None, force_document=True, thumb=str(thumb),
-        reply_to=job.msg_id, buttons=[Button.inline("✏️ Bddel titre", data=f"rt:{job.id}".encode())],
+        reply_to=job.msg_id, buttons=[buttons],
         progress_callback=lambda d, t: asyncio.ensure_future(tick("⬆️ Kansifet l video…", d / t if t else 0)))
+    await client.send_file(chat, str(cover), caption="🖼 Cover (Reels → Edit cover → mn l galerie)",
+                           force_document=True, reply_to=sent.id)
     done[0] = True
     await api("deleteMessage", chat_id=job.chat_id, message_id=status)
     out.unlink(missing_ok=True)
     thumb.unlink(missing_ok=True)
+    cover.unlink(missing_ok=True)
     log.info("[job %s] %s · tanzil %.0fs · montage %.0fs · %.1f MB", job.id, job.filename, t_dl, t_mt, size_mb)
 
 
@@ -392,6 +448,7 @@ async def worker(client: TelegramClient) -> None:
             log.exception("[job %s] fchel", job_id)
             await say(job.chat_id, f"❌ Montage fchel: {esc(str(e))[:300]}", reply_to=job.msg_id)
         finally:
+            job.queued = False
             busy = None
             queue.task_done()
             _free_space()

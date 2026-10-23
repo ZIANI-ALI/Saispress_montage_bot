@@ -11,9 +11,12 @@ b animation, **b nefs l qualité**.
    #دولي
    العنوان ديال الخبر
    ```
-   Satr `#rkn` ikhtiyari. Ila ma ktebtich caption, l bot ghaysowlek 3la l 3onwan.
+   Satr `#rkn` ikhtiyari.
+   L bot kaysowlek: **🏷 Ghir logo** wla **📰 Logo + titre**. Ila khtariti titre w ma ktebtich caption, kaysowlek 3la l 3onwan.
 3. L bot kayban lik l progress (tanzil → montage → irsal), w kayrje3 l video ka Fichier.
 4. **✏️ Bddel titre**: kat3awed l montage b 3onwan jdid bla ma t3awed tsifet l video.
+   **🔁 Ghir logo / 🔁 Logo + titre**: kat3awed l montage b l format lakhor.
+   M3a kol video katji **cover** (JPEG 1080×1920 b nefs l design) l Reels: «Edit cover» → mn l galerie.
    Hadchi kaykhdem ghir f nefs l run, ya3ni ~5 sa3at men ba3d l montage.
 
 `/help`: l m3awna · `/cancel`: tlghi l 3onwan li kaytsenna.
@@ -24,11 +27,12 @@ b animation, **b nefs l qualité**.
   Video 9:16 kbira katb9a b résolution dyalha. Video machi 9:16: zoom in 7tta t3mer l cadre kaml (crop f l wst), bla flou.
 - **Video 3rida (16:9, 4:3, mrabba3a): frame 9:16** (b7al reels d l akhbar), l video kamla bla crop:
   - L video f l wost, w l fond = nefs l video mdbbla b tint navy.
-  - L fo9: logo l imin, `#rkn` + date l issar.
+  - L fo9: logo l imin, `#rkn` l issar.
   - Ta7t l video: **hook** (jomla sghira katkhl9 l fodoul, ex. «لم ينهض من السجود..») + titre kbir b khatt dahbi.
   - Hook kaykhtarha Gemini (free tier) mn titre, bla ma yzid 7tta ma3louma. Bla `GEMINI_API_KEY` (wla quota): bla hook.
   - `#عاجل`: block 7mer ta7t l video b label «عاجل» (bla hook).
   - Titre w logo kaybqaw l video kamla (Reels kayakhod cover mn l frame).
+- **Ghir logo:** nefs l frame (logo + `#rkn`) bla hook w bla titre. Video 9:16: bla panel.
 - **Video 9:16 / 4:5:** kif 9bel (zoom, panel b animation).
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Titre:** panel navy + khatt gold + pill d l rkn.

@@ -1,7 +1,8 @@
 """Montage d video Saispress: format 9:16, logo, w titre f panel navy b animation.
 
 Video 3rida (16:9, 4:3, mrabba3a): frame 9:16 (frame_layout) b7al l reels d l akhbar: l video kamla f l wost
-(bla crop), fond = nefs l video mdbbla, l fo9 logo + #rkn + date, lta7t jomla sghira (hook) + titre kbir.
+(bla crop), fond = nefs l video mdbbla, l fo9 logo + #rkn, lta7t jomla sghira (hook) + titre kbir.
+«Ghir logo» (with_title=False): nefs l montage bla titre. Cover (cover_image): frame JPEG mn l video l mkmmla.
 F عاجل: block 7mer ta7t l video b label «عاجل».
 
 L animation (b7al l exemple d l brand):
@@ -14,8 +15,6 @@ Videowat HDR (iPhone) kaytbddlo l SDR b tone-mapping bach l alwan ma ybhtouch.
 """
 import json
 import math
-from datetime import datetime
-from zoneinfo import ZoneInfo
 import os
 import re
 import shutil
@@ -307,7 +306,6 @@ VID_TOP = 560          # l video f l wost (fo9ha header, ta7tha titre)
 VID_MAX_H = 760        # video 4:3 / mrabba3a: ma tklach l blasa d titre
 TEXT_R, TEXT_L = 940, 70   # nass bin had jouj (l imin: icons d Reels)
 TEXT_MAX_Y = 1640      # ta7t: caption w boutons d Instagram
-TZ = ZoneInfo("Africa/Casablanca")
 
 
 def framed(p: Probe) -> bool:
@@ -344,16 +342,17 @@ def _chevrons(d: ImageDraw.ImageDraw, x: int, cy: int, size: int, fill) -> None:
         d.line([(x0, cy - size / 2), (x0 - size / 2, cy), (x0, cy + size / 2)], fill=fill, width=9, joint="curve")
 
 
-def frame_overlay(box: tuple[int, int, int, int], title: str, category: str | None, hook: str | None,
-                  date: str | None = None) -> Image.Image:
-    """Overlay 1080x1920 (RGBA) l l video kamla: tint navy 3la l fond, header, hook w titre (wla block عاجل)."""
+def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: str | None,
+                  hook: str | None) -> Image.Image:
+    """Overlay 1080x1920 (RGBA) l l video kamla: tint navy 3la l fond, header, hook w titre (wla block عاجل).
+    title None: ghir logo w #rkn."""
     vx, vy, vw, vh = box
     urgent = urgent_cat(category)
     im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
     d = ImageDraw.Draw(im)
     d.rectangle((vx, vy, vx + vw - 1, vy + vh - 1), fill=(0, 0, 0, 0))  # l video bla tint
 
-    # header: logo l imin, #rkn + date l issar (ta7t interface d Reels ~230px)
+    # header: logo l imin, #rkn l issar (ta7t interface d Reels ~230px)
     lg = Image.open(ASSETS / "logo.png").convert("RGBA")
     lw = 230
     lg = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
@@ -369,10 +368,9 @@ def frame_overlay(box: tuple[int, int, int, int], title: str, category: str | No
     d.rounded_rectangle((x1 - 6 - sq, y0 + 6, x1 - 6, y0 + 6 + sq), radius=10, fill=(*(RED if urgent else GOLD), 255))
     d.text((x1 - 6 - sq / 2, y0 + ph / 2 + 2), "#", font=_font(FONT_TITLE, 44), fill=WHITE, anchor="mm")
     d.text((x1 - 6 - sq - 18, y0 + ph / 2 + 3), tag, font=tag_f, fill=WHITE, anchor="rm", direction="rtl")
-    date = date or datetime.now(TZ).strftime("%Y/%m/%d")
-    d.text((x0 + 8, y0 + ph + 20), date, font=_font(FONT_PILL, 32), fill=(235, 235, 235), anchor="la")
-
     top = vy + vh
+    if not title:
+        return im
     if urgent:  # b7al l akhbar 3ajila: block 7mer ta7t l video, label «عاجل», titre byed
         fnt, lines = _fit_lines(title, FONT_TITLE, TEXT_R - TEXT_L, ((3, 70, 58), (4, 58, 46)))
         lh = round(fnt.size * 1.32)
@@ -450,7 +448,7 @@ def tonemap_available() -> bool:
     return " zscale " in out and " tonemap " in out
 
 
-def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay) -> str:
+def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay | None) -> str:
     chain = []
     if p.hdr and tonemap_available():
         chain.append("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
@@ -464,34 +462,39 @@ def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay) -
         g = (f"[0:v]{pre},scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,"
              f"crop={W}:{H},setsar=1[base];")
     lx, ly = logo_xy
+    if not ov:  # ghir logo
+        return g + f"[base][1:v]overlay={lx}:{ly},format=yuv420p[v]"
     g += (f"[base][1:v]overlay={lx}:{ly}[lg];"
           f"[lg][2:v]overlay={ov.x}:{ov.y}:eof_action=pass,format=yuv420p[v]")
     return g
 
 
 def montage(src: Path, dst: Path, title: str, category: str | None = None,
-            progress: Callable[[float], None] | None = None, hook: str | None = None) -> Probe:
-    """hook: jomla sghira fo9 titre (ghir f frame d l videos 3rida)."""
+            progress: Callable[[float], None] | None = None, hook: str | None = None,
+            with_title: bool = True) -> Probe:
+    """hook: jomla sghira fo9 titre (ghir f frame d l videos 3rida). with_title=False: ghir logo (w #rkn f frame)."""
     p = probe(src)
     W, H, native = out_size(p)
-    title = clean_title(title)
-    if not title:
+    title = clean_title(title) if with_title else ""
+    if with_title and not title:
         raise ValueError("titre khawi")
     category = clean_title(category) if category else None
     work = Path(tempfile.mkdtemp(prefix="ov_"))
     try:
         if framed(p):
             box = video_box(p)
-            frame_overlay(box, title, category, clean_title(hook) if hook else None).save(work / "frame.png")
+            frame_overlay(box, title or None, category, clean_title(hook) if hook and title else None
+                          ).save(work / "frame.png")
             inputs = ["-i", str(work / "frame.png")]  # tswira wa7da l video kamla
             graph = build_filter_framed(p, box)
         else:
-            ov = build_overlay(W, H, title, category, p.duration)
+            ov = build_overlay(W, H, title, category, p.duration) if title else None
             lg, lx, ly = logo_image(W)
             lg.save(work / "logo.png")
-            render_overlay_frames(ov, p.fps, work)
-            inputs = ["-i", str(work / "logo.png"),  # tswira wa7da: overlay kay3awedha 7tta l akhir
-                      "-framerate", f"{p.fps:.5f}", "-i", str(work / "f%05d.png")]
+            inputs = ["-i", str(work / "logo.png")]  # tswira wa7da: overlay kay3awedha 7tta l akhir
+            if ov:
+                render_overlay_frames(ov, p.fps, work)
+                inputs += ["-framerate", f"{p.fps:.5f}", "-i", str(work / "f%05d.png")]
             graph = build_filter(p, W, H, native, (lx, ly), ov)
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1",
                "-i", str(src), *inputs,
@@ -519,6 +522,23 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return p
+
+
+def cover_time(p: Probe, with_title: bool) -> float:
+    """W9t d l cover f l video l mkmmla: frame (titre dima kayban) f l wost (max 2 s); 9:16 b titre: mlli l panel
+    kaykoun kaml (0.43 s → TITLE_SECONDS)."""
+    if not p.duration:
+        return 0.0
+    if with_title and not framed(p):
+        return min(1.5, max(0.5, min(TITLE_SECONDS, p.duration - 0.6) - 0.2), p.duration / 2)
+    return min(2.0, p.duration / 2)
+
+
+def cover_image(video: Path, dst: Path, at: float) -> Path:
+    """Cover JPEG b résolution kamla (l Reels: «Edit cover» → mn l galerie)."""
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{at:.2f}", "-i", str(video), "-frames:v", "1",
+                    "-q:v", "2", str(dst)], check=True)
+    return dst
 
 
 def thumbnail(video: Path, dst: Path, at: float = 1.0) -> Path:
