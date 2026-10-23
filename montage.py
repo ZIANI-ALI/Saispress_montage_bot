@@ -1,7 +1,7 @@
 """Montage d video Saispress: format 9:16, logo, w titre f panel navy b animation.
 
 Video 3rida (16:9, 4:3, mrabba3a): frame 9:16 (frame_layout) b7al l reels d l akhbar: l video kamla f l wost
-(bla crop), fond = nefs l video mdbbla, l fo9 logo + #rkn, lta7t jomla sghira (hook) + titre kbir.
+(bla crop), fond = nefs l video mdbbla, l fo9 logo + #rkn, lta7t titre kbir (flèches dahbiyin l imin).
 «Ghir logo» (with_title=False): nefs l montage bla titre. Cover (cover_image): frame JPEG mn l video l mkmmla.
 F عاجل: block 7mer ta7t l video b label «عاجل».
 
@@ -372,15 +372,14 @@ def video_box(p: Probe) -> tuple[int, int, int, int]:
 
 
 def _chevrons(d: ImageDraw.ImageDraw, x: int, cy: int, size: int, fill) -> None:
-    """«‹‹» l imin d l hook (bla glyph f l font)."""
+    """«‹‹» l imin d titre (bla glyph f l font)."""
     for k in (0, 1):
         x0 = x - k * size * 0.62
         d.line([(x0, cy - size / 2), (x0 - size / 2, cy), (x0, cy + size / 2)], fill=fill, width=9, joint="curve")
 
 
-def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: str | None,
-                  hook: str | None) -> Image.Image:
-    """Overlay 1080x1920 (RGBA) l l video kamla: tint navy 3la l fond, header, hook w titre (wla block عاجل).
+def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: str | None) -> Image.Image:
+    """Overlay 1080x1920 (RGBA) l l video kamla: tint navy 3la l fond, header, titre (wla block عاجل).
     title None: ghir logo w #rkn."""
     vx, vy, vw, vh = box
     urgent = urgent_cat(category)
@@ -422,26 +421,23 @@ def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: s
             d.text((TEXT_R, y_text + i * lh), ln, font=fnt, fill=WHITE, anchor="ra", direction="rtl")
         return im
 
-    y = top + 56
-    if hook:
-        hf = _font(FONT_PILL, 42)
-        _chevrons(d, TEXT_R, y + 26, 34, (*GOLD, 255))
-        d.text((TEXT_R - 72, y + 26), hook, font=hf, fill=(240, 240, 240), anchor="rm", direction="rtl")
-        y += 52 + 34
+    y = top + 64
+    right = TEXT_R - 70  # l imin: flèches dahbiyin 9bel titre
     room = TEXT_MAX_Y - y
     for steps in (((2, 84, 70), (3, 74, 60)), ((3, 60, 50), (4, 52, 44))):
-        fnt, lines = _fit_title(title, FONT_TITLE, TEXT_R - TEXT_L, steps)
+        fnt, lines = _fit_title(title, FONT_TITLE, right - TEXT_L, steps)
         lh = round(fnt.size * 1.42)
         if lh * len(lines) <= room:
             break
     asc, desc = fnt.getmetrics()
+    _chevrons(d, TEXT_R, round(y + asc * 0.6), round(fnt.size * 0.5), (*GOLD, 255))
     for i, ln in enumerate(lines):
         ty = y + i * lh
-        d.text((TEXT_R, ty), ln, font=fnt, fill=WHITE, anchor="ra", direction="rtl")
+        d.text((right, ty), ln, font=fnt, fill=WHITE, anchor="ra", direction="rtl")
         uy = ty + asc + desc + 4  # khatt dahbi ta7t kol satr (b7al l exemple)
-        left = TEXT_R - _width(ln, fnt)
-        d.rectangle((left, uy, TEXT_R, uy + 5), fill=(*GOLD, 255))
-        d.ellipse((TEXT_R - 4, uy - 4, TEXT_R + 10, uy + 9), fill=(*GOLD, 255))
+        left = right - _width(ln, fnt)
+        d.rectangle((left, uy, right, uy + 5), fill=(*GOLD, 255))
+        d.ellipse((right - 4, uy - 4, right + 10, uy + 9), fill=(*GOLD, 255))
     return im
 
 
@@ -506,9 +502,8 @@ def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay | 
 
 
 def montage(src: Path, dst: Path, title: str, category: str | None = None,
-            progress: Callable[[float], None] | None = None, hook: str | None = None,
-            with_title: bool = True) -> Probe:
-    """hook: jomla sghira fo9 titre (ghir f frame d l videos 3rida). with_title=False: ghir logo (w #rkn f frame)."""
+            progress: Callable[[float], None] | None = None, with_title: bool = True) -> Probe:
+    """with_title=False: ghir logo (w #rkn f frame)."""
     p = probe(src)
     W, H, native = out_size(p)
     title = clean_title(title) if with_title else ""
@@ -519,8 +514,7 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
     try:
         if framed(p):
             box = video_box(p)
-            frame_overlay(box, title or None, category, clean_title(hook) if hook and title else None
-                          ).save(work / "frame.png")
+            frame_overlay(box, title or None, category).save(work / "frame.png")
             inputs = ["-i", str(work / "frame.png")]  # tswira wa7da l video kamla
             graph = build_filter_framed(p, box)
         else:
@@ -583,9 +577,9 @@ def thumbnail(video: Path, dst: Path, at: float = 1.0) -> Path:
     return dst
 
 
-if __name__ == "__main__":  # tajriba: python montage.py in.mp4 out.mp4 "titre" [rkn] [hook]
+if __name__ == "__main__":  # tajriba: python montage.py in.mp4 out.mp4 "titre" [rkn]
     import sys
     a = sys.argv[1:]
     montage(Path(a[0]), Path(a[1]), a[2], a[3] if len(a) > 3 else None,
-            progress=lambda x: print(f"\r{x:.0%}", end="", flush=True), hook=a[4] if len(a) > 4 else None)
+            progress=lambda x: print(f"\r{x:.0%}", end="", flush=True))
     print()

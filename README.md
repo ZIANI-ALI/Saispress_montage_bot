@@ -28,11 +28,10 @@ b animation, **b nefs l qualité**.
 - **Video 3rida (16:9, 4:3, mrabba3a): frame 9:16** (b7al reels d l akhbar), l video kamla bla crop:
   - L video f l wost, w l fond = nefs l video mdbbla b tint navy.
   - L fo9: logo l imin, `#rkn` l issar.
-  - Ta7t l video: **hook** (jomla sghira katkhl9 l fodoul, ex. «لم ينهض من السجود..») + titre kbir b khatt dahbi.
-  - Hook kaykhtarha Gemini (free tier) mn titre, bla ma yzid 7tta ma3louma. Bla `GEMINI_API_KEY` (wla quota): bla hook.
-  - `#عاجل`: block 7mer ta7t l video b label «عاجل» (bla hook).
+  - Ta7t l video: flèches dahbiyin + titre kbir b khatt dahbi.
+  - `#عاجل`: block 7mer ta7t l video b label «عاجل».
   - Titre w logo kaybqaw l video kamla (Reels kayakhod cover mn l frame).
-- **Ghir logo:** nefs l frame (logo + `#rkn`) bla hook w bla titre. Video 9:16: bla panel.
+- **Ghir logo:** nefs l frame (logo + `#rkn`) bla titre. Video 9:16: bla panel.
 - **Video 9:16 / 4:5:** kif 9bel (zoom, panel b animation).
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
@@ -50,7 +49,7 @@ b animation, **b nefs l qualité**.
 1. **Bot:** f Telegram, @BotFather → `/newbot` → khod l **token**.
 2. **API:** my.telegram.org → login → *API development tools* → khod **api_id** w **api_hash**.
 3. **GitHub** → had l repo → Settings → Secrets and variables → Actions:
-   - *Secrets*: `VIDEO_BOT_TOKEN`, `TG_API_ID`, `TG_API_HASH`, w `GEMINI_API_KEY` (ikhtiyari, free tier: hook d l videos 3rida)
+   - *Secrets*: `VIDEO_BOT_TOKEN`, `TG_API_ID`, `TG_API_HASH`
    - *Variables*:
      - `VIDEO_ALLOWED_IDS` = IDs d l équipe, mfr9in b virgule (ex: `5757985158,123456789`).
      - `VIDEO_BOT_ENABLED` = `true`.
@@ -67,7 +66,6 @@ Bach t3ref ID dyal chi wa7ed: ysifet message l @userinfobot.
 | `MONTAGE_CRF` | `17` | qualité (a9el = a7san w fichier kber) |
 | `MONTAGE_PRESET` | `slow` | `medium` = asra3, chwiya kber f l 7ajm |
 | `RUN_MINUTES` | `330` | 3omr kol run |
-| `GEMINI_HOOK_MODELS` | `gemini-3.5-flash-lite,…` | models d hook (b tartib, ila wa7ed 429 → li moraha) |
 
 ## Kifach khddam
 - `bot.py`:
