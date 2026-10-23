@@ -1,5 +1,9 @@
 """Montage d video Saispress: format 9:16, logo, w titre f panel navy b animation.
 
+Video 3rida (16:9, 4:3, mrabba3a): frame 9:16 (frame_layout) b7al l reels d l akhbar: l video kamla f l wost
+(bla crop), fond = nefs l video mdbbla, l fo9 logo + #rkn + date, lta7t jomla sghira (hook) + titre kbir.
+F عاجل: block 7mer ta7t l video b label «عاجل».
+
 L animation (b7al l exemple d l brand):
   dkhla: l khatt gold kaykber, l pill d l rkn w l panel kayban b fade, mn ba3d l titre kaytkchef men l imin l l issar.
   khrja: l titre kaytkhba men l issar l l imin, mn ba3d l panel w l pill w l khatt.
@@ -10,6 +14,8 @@ Videowat HDR (iPhone) kaytbddlo l SDR b tone-mapping bach l alwan ma ybhtouch.
 """
 import json
 import math
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import os
 import re
 import shutil
@@ -25,6 +31,7 @@ ASSETS = Path(__file__).resolve().parent / "assets"
 NAVY = (13, 26, 60)
 GOLD = (190, 150, 33)
 WHITE = (255, 255, 255)
+RED = (204, 20, 38)  # عاجل
 PANEL_ALPHA = 240
 FONT_TITLE = "Tajawal-ExtraBold.ttf"
 FONT_PILL = "Tajawal-Bold.ttf"
@@ -293,6 +300,134 @@ def logo_image(W: int) -> tuple[Image.Image, int, int]:
     return lg, round(648 * s) - w, round(190 * s)
 
 
+# ───────────────────────── frame 9:16 l videos 3rida ─────────────────────────
+
+FW, FH = 1080, 1920
+VID_TOP = 560          # l video f l wost (fo9ha header, ta7tha titre)
+VID_MAX_H = 760        # video 4:3 / mrabba3a: ma tklach l blasa d titre
+TEXT_R, TEXT_L = 940, 70   # nass bin had jouj (l imin: icons d Reels)
+TEXT_MAX_Y = 1640      # ta7t: caption w boutons d Instagram
+TZ = ZoneInfo("Africa/Casablanca")
+
+
+def framed(p: Probe) -> bool:
+    """Video 3rida wla mrabba3a: frame (bla crop). 9:16 / 4:5: zoom kif 9bel."""
+    return p.width / p.height >= 0.9
+
+
+def urgent_cat(category: str | None) -> bool:
+    return bool(category) and category.strip().strip("!") == "عاجل"
+
+
+def video_box(p: Probe) -> tuple[int, int, int, int]:
+    """(x, y, w, h) d l video f l frame."""
+    w, h = FW, _even(FW * p.height / p.width)
+    if h > VID_MAX_H:
+        w, h = _even(VID_MAX_H * p.width / p.height), VID_MAX_H
+    return (FW - w) // 2, VID_TOP, w, h
+
+
+def _fit_lines(text: str, name: str, maxw: float, steps) -> tuple:
+    for max_lines, hi, lo in steps:
+        for size in range(hi, lo - 1, -2):
+            fnt = _font(name, size)
+            lines = _wrap(text, fnt, maxw)
+            if len(lines) <= max_lines:
+                return fnt, lines
+    return fnt, lines
+
+
+def _chevrons(d: ImageDraw.ImageDraw, x: int, cy: int, size: int, fill) -> None:
+    """«‹‹» l imin d l hook (bla glyph f l font)."""
+    for k in (0, 1):
+        x0 = x - k * size * 0.62
+        d.line([(x0, cy - size / 2), (x0 - size / 2, cy), (x0, cy + size / 2)], fill=fill, width=9, joint="curve")
+
+
+def frame_overlay(box: tuple[int, int, int, int], title: str, category: str | None, hook: str | None,
+                  date: str | None = None) -> Image.Image:
+    """Overlay 1080x1920 (RGBA) l l video kamla: tint navy 3la l fond, header, hook w titre (wla block عاجل)."""
+    vx, vy, vw, vh = box
+    urgent = urgent_cat(category)
+    im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
+    d = ImageDraw.Draw(im)
+    d.rectangle((vx, vy, vx + vw - 1, vy + vh - 1), fill=(0, 0, 0, 0))  # l video bla tint
+
+    # header: logo l imin, #rkn + date l issar (ta7t interface d Reels ~230px)
+    lg = Image.open(ASSETS / "logo.png").convert("RGBA")
+    lw = 230
+    lg = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
+    im.alpha_composite(lg, (FW - 60 - lw, 250))
+    tag_f = _font(FONT_PILL, 40)
+    tag = f"{category}" if category else "Saispress"
+    tw = _width(tag, tag_f)
+    ph = 66
+    sq = ph - 12
+    x0, y0 = 60, 258
+    x1 = x0 + 24 + tw + 18 + sq + 6
+    d.rounded_rectangle((x0, y0, x1, y0 + ph), radius=14, fill=(*NAVY, 235), outline=(*GOLD, 255), width=3)
+    d.rounded_rectangle((x1 - 6 - sq, y0 + 6, x1 - 6, y0 + 6 + sq), radius=10, fill=(*(RED if urgent else GOLD), 255))
+    d.text((x1 - 6 - sq / 2, y0 + ph / 2 + 2), "#", font=_font(FONT_TITLE, 44), fill=WHITE, anchor="mm")
+    d.text((x1 - 6 - sq - 18, y0 + ph / 2 + 3), tag, font=tag_f, fill=WHITE, anchor="rm", direction="rtl")
+    date = date or datetime.now(TZ).strftime("%Y/%m/%d")
+    d.text((x0 + 8, y0 + ph + 20), date, font=_font(FONT_PILL, 32), fill=(235, 235, 235), anchor="la")
+
+    top = vy + vh
+    if urgent:  # b7al l akhbar 3ajila: block 7mer ta7t l video, label «عاجل», titre byed
+        fnt, lines = _fit_lines(title, FONT_TITLE, TEXT_R - TEXT_L, ((3, 70, 58), (4, 58, 46)))
+        lh = round(fnt.size * 1.32)
+        y_text = top + 96
+        bottom = min(FH - 200, max(y_text + lh * len(lines) + 70, top + 380))
+        d.rectangle((0, top, FW, bottom), fill=(*RED, 255))
+        lf = _font(FONT_TITLE, 66)
+        lab_w = _width("عاجل", lf) + 64
+        d.rectangle((TEXT_R - lab_w, top - 52, TEXT_R, top + 40), fill=(*WHITE, 255))
+        d.rectangle((TEXT_R - lab_w + 7, top - 45, TEXT_R - 7, top + 33), outline=(*RED, 255), width=4)
+        d.text((TEXT_R - lab_w / 2, top - 6), "عاجل", font=lf, fill=RED, anchor="mm", direction="rtl")
+        for i, ln in enumerate(lines):
+            d.text((TEXT_R, y_text + i * lh), ln, font=fnt, fill=WHITE, anchor="ra", direction="rtl")
+        return im
+
+    y = top + 56
+    if hook:
+        hf = _font(FONT_PILL, 42)
+        _chevrons(d, TEXT_R, y + 26, 34, (*GOLD, 255))
+        d.text((TEXT_R - 72, y + 26), hook, font=hf, fill=(240, 240, 240), anchor="rm", direction="rtl")
+        y += 52 + 34
+    room = TEXT_MAX_Y - y
+    for steps in (((2, 84, 70), (3, 74, 60)), ((3, 60, 50), (4, 52, 44))):
+        fnt, lines = _fit_lines(title, FONT_TITLE, TEXT_R - TEXT_L, steps)
+        lh = round(fnt.size * 1.42)
+        if lh * len(lines) <= room:
+            break
+    asc, desc = fnt.getmetrics()
+    for i, ln in enumerate(lines):
+        ty = y + i * lh
+        d.text((TEXT_R, ty), ln, font=fnt, fill=WHITE, anchor="ra", direction="rtl")
+        uy = ty + asc + desc + 4  # khatt dahbi ta7t kol satr (b7al l exemple)
+        left = TEXT_R - _width(ln, fnt)
+        d.rectangle((left, uy, TEXT_R, uy + 5), fill=(*GOLD, 255))
+        d.ellipse((TEXT_R - 4, uy - 4, TEXT_R + 10, uy + 9), fill=(*GOLD, 255))
+    return im
+
+
+def build_filter_framed(p: Probe, box: tuple[int, int, int, int]) -> str:
+    vx, vy, vw, vh = box
+    chain = []
+    if p.hdr and tonemap_available():
+        chain.append("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
+                     "tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv")
+    chain.append("format=yuv420p")
+    pre = ",".join(chain)
+    # fond: nefs l video sghira, mdbbla, mkebbra (asra3 mn blur 3la 1080x1920)
+    return (f"[0:v]{pre},split[a][b];"
+            f"[a]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=12:3,"
+            f"scale={FW}:{FH}:flags=bicubic,setsar=1[bg];"
+            f"[b]scale={vw}:{vh}:flags=lanczos,setsar=1[fg];"
+            f"[bg][fg]overlay={vx}:{vy}[base];"
+            f"[base][1:v]overlay=0:0,format=yuv420p[v]")
+
+
 # ───────────────────────── ffmpeg ─────────────────────────
 
 def _even(x: float) -> int:
@@ -302,6 +437,8 @@ def _even(x: float) -> int:
 def out_size(p: Probe) -> tuple[int, int, bool]:
     """(W, H, deja_9_16). F l a9al 1080x1920: l titre w l logo kaytrsmo b qualité kamla
     w Instagram ma ykbbrhomch (kayfer9ou). Ila l video deja 9:16 w kbira, kanbqaw 3la résolution dyalha."""
+    if framed(p):
+        return FW, FH, False
     native = abs(p.width / p.height - 9 / 16) < 0.02
     if native and p.width >= MIN_W:
         return _even(p.width), _even(p.height), True
@@ -333,23 +470,32 @@ def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay) -
 
 
 def montage(src: Path, dst: Path, title: str, category: str | None = None,
-            progress: Callable[[float], None] | None = None) -> Probe:
+            progress: Callable[[float], None] | None = None, hook: str | None = None) -> Probe:
+    """hook: jomla sghira fo9 titre (ghir f frame d l videos 3rida)."""
     p = probe(src)
     W, H, native = out_size(p)
     title = clean_title(title)
     if not title:
         raise ValueError("titre khawi")
-    ov = build_overlay(W, H, title, clean_title(category) if category else None, p.duration)
+    category = clean_title(category) if category else None
     work = Path(tempfile.mkdtemp(prefix="ov_"))
     try:
-        lg, lx, ly = logo_image(W)
-        lg.save(work / "logo.png")
-        render_overlay_frames(ov, p.fps, work)
+        if framed(p):
+            box = video_box(p)
+            frame_overlay(box, title, category, clean_title(hook) if hook else None).save(work / "frame.png")
+            inputs = ["-i", str(work / "frame.png")]  # tswira wa7da l video kamla
+            graph = build_filter_framed(p, box)
+        else:
+            ov = build_overlay(W, H, title, category, p.duration)
+            lg, lx, ly = logo_image(W)
+            lg.save(work / "logo.png")
+            render_overlay_frames(ov, p.fps, work)
+            inputs = ["-i", str(work / "logo.png"),  # tswira wa7da: overlay kay3awedha 7tta l akhir
+                      "-framerate", f"{p.fps:.5f}", "-i", str(work / "f%05d.png")]
+            graph = build_filter(p, W, H, native, (lx, ly), ov)
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1",
-               "-i", str(src),
-               "-i", str(work / "logo.png"),  # tswira wa7da: overlay kay3awedha 7tta l akhir
-               "-framerate", f"{p.fps:.5f}", "-i", str(work / "f%05d.png"),
-               "-filter_complex", build_filter(p, W, H, native, (lx, ly), ov),
+               "-i", str(src), *inputs,
+               "-filter_complex", graph,
                "-map", "[v]", "-map", "0:a:0?",
                "-c:v", "libx264", "-preset", PRESET, "-crf", CRF, "-profile:v", "high",
                "-pix_fmt", "yuv420p",
@@ -381,9 +527,9 @@ def thumbnail(video: Path, dst: Path, at: float = 1.0) -> Path:
     return dst
 
 
-if __name__ == "__main__":  # tajriba: python montage.py in.mp4 out.mp4 "titre" [rkn]
+if __name__ == "__main__":  # tajriba: python montage.py in.mp4 out.mp4 "titre" [rkn] [hook]
     import sys
     a = sys.argv[1:]
     montage(Path(a[0]), Path(a[1]), a[2], a[3] if len(a) > 3 else None,
-            progress=lambda x: print(f"\r{x:.0%}", end="", flush=True))
+            progress=lambda x: print(f"\r{x:.0%}", end="", flush=True), hook=a[4] if len(a) > 4 else None)
     print()

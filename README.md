@@ -22,6 +22,14 @@ b animation, **b nefs l qualité**.
 
 - **Format:** output dima 9:16, f l a9al 1080×1920 (l titre w l logo kaytrsmo 7addin 7tta ila l video sghira).
   Video 9:16 kbira katb9a b résolution dyalha. Video machi 9:16: zoom in 7tta t3mer l cadre kaml (crop f l wst), bla flou.
+- **Video 3rida (16:9, 4:3, mrabba3a): frame 9:16** (b7al reels d l akhbar), l video kamla bla crop:
+  - L video f l wost, w l fond = nefs l video mdbbla b tint navy.
+  - L fo9: logo l imin, `#rkn` + date l issar.
+  - Ta7t l video: **hook** (jomla sghira katkhl9 l fodoul, ex. «لم ينهض من السجود..») + titre kbir b khatt dahbi.
+  - Hook kaykhtarha Gemini (free tier) mn titre, bla ma yzid 7tta ma3louma. Bla `GEMINI_API_KEY` (wla quota): bla hook.
+  - `#عاجل`: block 7mer ta7t l video b label «عاجل» (bla hook).
+  - Titre w logo kaybqaw l video kamla (Reels kayakhod cover mn l frame).
+- **Video 9:16 / 4:5:** kif 9bel (zoom, panel b animation).
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
   - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.
@@ -38,7 +46,7 @@ b animation, **b nefs l qualité**.
 1. **Bot:** f Telegram, @BotFather → `/newbot` → khod l **token**.
 2. **API:** my.telegram.org → login → *API development tools* → khod **api_id** w **api_hash**.
 3. **GitHub** → had l repo → Settings → Secrets and variables → Actions:
-   - *Secrets*: `VIDEO_BOT_TOKEN`, `TG_API_ID`, `TG_API_HASH`
+   - *Secrets*: `VIDEO_BOT_TOKEN`, `TG_API_ID`, `TG_API_HASH`, w `GEMINI_API_KEY` (ikhtiyari, free tier: hook d l videos 3rida)
    - *Variables*:
      - `VIDEO_ALLOWED_IDS` = IDs d l équipe, mfr9in b virgule (ex: `5757985158,123456789`).
      - `VIDEO_BOT_ENABLED` = `true`.
@@ -55,6 +63,7 @@ Bach t3ref ID dyal chi wa7ed: ysifet message l @userinfobot.
 | `MONTAGE_CRF` | `17` | qualité (a9el = a7san w fichier kber) |
 | `MONTAGE_PRESET` | `slow` | `medium` = asra3, chwiya kber f l 7ajm |
 | `RUN_MINUTES` | `330` | 3omr kol run |
+| `GEMINI_HOOK_MODELS` | `gemini-3.5-flash-lite,…` | models d hook (b tartib, ila wa7ed 429 → li moraha) |
 
 ## Kifach khddam
 - `bot.py`:

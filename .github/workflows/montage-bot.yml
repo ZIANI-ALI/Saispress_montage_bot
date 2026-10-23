@@ -53,6 +53,8 @@ jobs:
           MONTAGE_PRESET: ${{ vars.MONTAGE_PRESET || 'slow' }}
           MONTAGE_CRF: ${{ vars.MONTAGE_CRF || '17' }}
           TITLE_SECONDS: ${{ vars.TITLE_SECONDS || '4.2' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_HOOK_MODELS: ${{ vars.GEMINI_HOOK_MODELS }}
 
       - name: Lanci run jay (24/24)
         if: ${{ !cancelled() && vars.VIDEO_BOT_ENABLED == 'true' }}
