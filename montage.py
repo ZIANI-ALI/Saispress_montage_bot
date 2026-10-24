@@ -2,6 +2,8 @@
 
 Video 3rida (16:9, 4:3, mrabba3a): frame 9:16 (frame_layout) b7al l reels d l akhbar: l video kamla f l wost
 (bla crop), fond = nefs l video mdbbla, l fo9 logo + #rkn, lta7t titre kbir (flèches dahbiyin l imin).
+L titre f l frame kaydkhel b animation (flèches, mn ba3d stoura kaytkchfo men l imin) w kayb9a 7tta l akhir.
+Video 9:16: l bot kaydir jouj versions: zoom + panel (frame=False) w frame (frame=True).
 «Ghir logo» (with_title=False): nefs l montage bla titre. Cover (cover_image): frame JPEG mn l video l mkmmla.
 F عاجل: block 7mer ta7t l video b label «عاجل».
 
@@ -378,9 +380,22 @@ def _chevrons(d: ImageDraw.ImageDraw, x: int, cy: int, size: int, fill) -> None:
         d.line([(x0, cy - size / 2), (x0 - size / 2, cy), (x0, cy + size / 2)], fill=fill, width=9, joint="curve")
 
 
-def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: str | None) -> Image.Image:
-    """Overlay 1080x1920 (RGBA) l l video kamla: tint navy 3la l fond, header, titre (wla block عاجل).
-    title None: ghir logo w #rkn."""
+@dataclass
+class FrameLayers:
+    """Frame f tba9at (l animation): base (tint + header) tabta, w l3anasir d titre (kolha f 1080x1920)."""
+    base: Image.Image
+    block: Image.Image | None       # عاجل: block 7mer (bla label)
+    label: Image.Image | None       # عاجل: label «عاجل»
+    chev: Image.Image | None        # flèches dahbiyin
+    lines: list                     # [(Image d satr + khatt dahbi, (left, right))]
+    top: int                        # awal y fih chi 3onsor d titre (l crop d l animation)
+
+
+def _layer() -> Image.Image:
+    return Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
+
+
+def frame_layers(box: tuple[int, int, int, int], title: str | None, category: str | None) -> FrameLayers:
     vx, vy, vw, vh = box
     urgent = urgent_cat(category)
     im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
@@ -404,22 +419,30 @@ def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: s
     d.text((x1 - 6 - sq / 2, y0 + ph / 2 + 2), "#", font=_font(FONT_TITLE, 44), fill=WHITE, anchor="mm")
     d.text((x1 - 6 - sq - 18, y0 + ph / 2 + 3), tag, font=tag_f, fill=WHITE, anchor="rm", direction="rtl")
     top = vy + vh
+    fl = FrameLayers(im, None, None, None, [], top)
     if not title:
-        return im
+        return fl
     if urgent:  # b7al l akhbar 3ajila: block 7mer ta7t l video, label «عاجل», titre byed
         fnt, lines = _fit_title(title, FONT_TITLE, TEXT_R - TEXT_L, ((3, 70, 58), (4, 58, 46)))
         lh = round(fnt.size * 1.32)
         y_text = top + 96
         bottom = min(FH - 200, max(y_text + lh * len(lines) + 70, top + 380))
-        d.rectangle((0, top, FW, bottom), fill=(*RED, 255))
+        fl.block = _layer()
+        ImageDraw.Draw(fl.block).rectangle((0, top, FW, bottom), fill=(*RED, 255))
+        fl.label = _layer()
+        d = ImageDraw.Draw(fl.label)
         lf = _font(FONT_TITLE, 66)
         lab_w = _width("عاجل", lf) + 64
         d.rectangle((TEXT_R - lab_w, top - 52, TEXT_R, top + 40), fill=(*WHITE, 255))
         d.rectangle((TEXT_R - lab_w + 7, top - 45, TEXT_R - 7, top + 33), outline=(*RED, 255), width=4)
         d.text((TEXT_R - lab_w / 2, top - 6), "عاجل", font=lf, fill=RED, anchor="mm", direction="rtl")
+        fl.top = top - 52
         for i, ln in enumerate(lines):
-            d.text((TEXT_R, y_text + i * lh), ln, font=fnt, fill=WHITE, anchor="ra", direction="rtl")
-        return im
+            lay = _layer()
+            ImageDraw.Draw(lay).text((TEXT_R, y_text + i * lh), ln, font=fnt, fill=WHITE, anchor="ra",
+                                     direction="rtl")
+            fl.lines.append((lay, (TEXT_R - _width(ln, fnt) - 4, TEXT_R + 4)))
+        return fl
 
     y = top + 64
     right = TEXT_R - 70  # l imin: flèches dahbiyin 9bel titre
@@ -430,18 +453,94 @@ def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: s
         if lh * len(lines) <= room:
             break
     asc, desc = fnt.getmetrics()
-    _chevrons(d, TEXT_R, round(y + asc * 0.6), round(fnt.size * 0.5), (*GOLD, 255))
+    fl.chev = _layer()
+    _chevrons(ImageDraw.Draw(fl.chev), TEXT_R, round(y + asc * 0.6), round(fnt.size * 0.5), (*GOLD, 255))
     for i, ln in enumerate(lines):
+        lay = _layer()
+        d = ImageDraw.Draw(lay)
         ty = y + i * lh
         d.text((right, ty), ln, font=fnt, fill=WHITE, anchor="ra", direction="rtl")
         uy = ty + asc + desc + 4  # khatt dahbi ta7t kol satr (b7al l exemple)
         left = right - _width(ln, fnt)
         d.rectangle((left, uy, right, uy + 5), fill=(*GOLD, 255))
         d.ellipse((right - 4, uy - 4, right + 10, uy + 9), fill=(*GOLD, 255))
+        fl.lines.append((lay, (left - 4, right + 12)))
+    return fl
+
+
+def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: str | None) -> Image.Image:
+    """Overlay 1080x1920 (RGBA) l l video kamla: tint navy 3la l fond, header, titre (wla block عاجل).
+    title None: ghir logo w #rkn."""
+    fl = frame_layers(box, title, category)
+    im = fl.base.copy()
+    for lay in (fl.block, fl.label, fl.chev, *(ln for ln, _ in fl.lines)):
+        if lay is not None:
+            im.alpha_composite(lay)
     return im
 
 
-def build_filter_framed(p: Probe, box: tuple[int, int, int, int]) -> str:
+# Animation d titre f l frame (dkhla bo7dha: l titre kayb9a 7tta l akhir, 7it ma kaygttich l video)
+FRAME_ANIM_START = 0.15   # block / flèches
+FRAME_LINE_DELAY = 0.30   # satr lowel
+FRAME_LINE_STEP = 0.16    # bin stoura
+FRAME_LINE_DUR = 0.42     # satr kaytkchef (men l imin l l issar) f had l modda
+
+
+def frame_anim_end(fl: FrameLayers) -> float:
+    n = len(fl.lines)
+    return FRAME_LINE_DELAY + max(0, n - 1) * FRAME_LINE_STEP + FRAME_LINE_DUR if n else 0.0
+
+
+def _wipe(lay: Image.Image, span: tuple[float, float], k: float) -> Image.Image:
+    """Kaytkchef men l imin l l issar (RTL): k=0 walou, k=1 kamel."""
+    left, right = span
+    edge = right - (right - left) * k
+    m = _row_mask(lay.size, [(max(0, int(edge)), FW, 1.0)])
+    out = lay.copy()
+    out.putalpha(ImageChops.multiply(lay.getchannel("A"), m))
+    return out
+
+
+def _shift(lay: Image.Image, dx: int) -> Image.Image:
+    """Kaydfe3 l tba9a l imin b dx (dx >= 0)."""
+    out = Image.new("RGBA", lay.size, (0, 0, 0, 0))
+    out.paste(lay.crop((0, 0, FW - dx, FH)), (dx, 0))
+    return out
+
+
+def render_frame_title(fl: FrameLayers, t: float) -> Image.Image:
+    """Tba9at d titre f l w9t t (bla base), kolha f 1080x1920."""
+    out = _layer()
+    a = FRAME_ANIM_START
+    if fl.block is not None:  # عاجل: block 7mer kaytkchef men l imin, label kayban mn ba3d
+        k = _prog(t, a, a + 0.30)
+        if k > 0:
+            out.alpha_composite(_wipe(fl.block, (0, FW), k))
+        k = _prog(t, a + 0.20, a + 0.38)
+        if k > 0:
+            out.alpha_composite(_alpha(_shift(fl.label, round(40 * (1 - k))), k))
+    if fl.chev is not None:  # flèches: fade + jaya men l imin
+        k = _prog(t, a, a + 0.30)
+        if k > 0:
+            out.alpha_composite(_alpha(_shift(fl.chev, round(50 * (1 - k))), k))
+    for i, (lay, span) in enumerate(fl.lines):
+        s0 = FRAME_LINE_DELAY + i * FRAME_LINE_STEP
+        k = _prog(t, s0, s0 + FRAME_LINE_DUR)
+        if k > 0:
+            out.alpha_composite(_wipe(lay, span, k))
+    return out
+
+
+def render_frame_title_frames(fl: FrameLayers, fps: float, folder: Path) -> int:
+    """PNG d l animation (crop men fl.top 7tta l t7t); l frame lakhra katb9a (eof_action=repeat)."""
+    n = math.ceil(frame_anim_end(fl) * fps) + 1
+    for i in range(n):
+        render_frame_title(fl, i / fps).crop((0, fl.top, FW, FH)).save(folder / f"t{i:05d}.png", compress_level=1)
+    return n
+
+
+def build_filter_framed(p: Probe, box: tuple[int, int, int, int], anim_y: int | None = None) -> str:
+    """anim_y: l animation d titre (input 2, PNG) f had l y; None: frame tabta (input 1) bo7dha."""
     vx, vy, vw, vh = box
     chain = []
     if p.hdr and tonemap_available():
@@ -455,7 +554,8 @@ def build_filter_framed(p: Probe, box: tuple[int, int, int, int]) -> str:
             f"scale={FW}:{FH}:flags=bicubic,setsar=1[bg];"
             f"[b]scale={vw}:{vh}:flags=lanczos,setsar=1[fg];"
             f"[bg][fg]overlay={vx}:{vy}[base];"
-            f"[base][1:v]overlay=0:0,format=yuv420p[v]")
+            + (f"[base][1:v]overlay=0:0[fr];[fr][2:v]overlay=0:{anim_y}:eof_action=repeat,format=yuv420p[v]"
+               if anim_y is not None else "[base][1:v]overlay=0:0,format=yuv420p[v]"))
 
 
 # ───────────────────────── ffmpeg ─────────────────────────
@@ -464,10 +564,11 @@ def _even(x: float) -> int:
     return max(2, int(round(x / 2)) * 2)
 
 
-def out_size(p: Probe) -> tuple[int, int, bool]:
+def out_size(p: Probe, frame: bool | None = None) -> tuple[int, int, bool]:
     """(W, H, deja_9_16). F l a9al 1080x1920: l titre w l logo kaytrsmo b qualité kamla
-    w Instagram ma ykbbrhomch (kayfer9ou). Ila l video deja 9:16 w kbira, kanbqaw 3la résolution dyalha."""
-    if framed(p):
+    w Instagram ma ykbbrhomch (kayfer9ou). Ila l video deja 9:16 w kbira, kanbqaw 3la résolution dyalha.
+    frame None: 3la 7sab l format (framed)."""
+    if framed(p) if frame is None else frame:
         return FW, FH, False
     native = abs(p.width / p.height - 9 / 16) < 0.02
     if native and p.width >= MIN_W:
@@ -502,21 +603,28 @@ def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay | 
 
 
 def montage(src: Path, dst: Path, title: str, category: str | None = None,
-            progress: Callable[[float], None] | None = None, with_title: bool = True) -> Probe:
-    """with_title=False: ghir logo (w #rkn f frame)."""
+            progress: Callable[[float], None] | None = None, with_title: bool = True,
+            frame: bool | None = None) -> Probe:
+    """with_title=False: ghir logo (w #rkn f frame). frame None: 3la 7sab l format (framed); True: frame 7tta
+    l 9:16 (titre b animation); False: zoom 9:16 (panel)."""
     p = probe(src)
-    W, H, native = out_size(p)
+    frame = framed(p) if frame is None else frame
+    W, H, native = out_size(p, frame)
     title = clean_title(title) if with_title else ""
     if with_title and not title:
         raise ValueError("titre khawi")
     category = clean_title(category) if category else None
     work = Path(tempfile.mkdtemp(prefix="ov_"))
     try:
-        if framed(p):
+        if frame:
             box = video_box(p)
-            frame_overlay(box, title or None, category).save(work / "frame.png")
+            fl = frame_layers(box, title or None, category)
+            fl.base.save(work / "frame.png")
             inputs = ["-i", str(work / "frame.png")]  # tswira wa7da l video kamla
-            graph = build_filter_framed(p, box)
+            if fl.lines:  # titre b animation (dkhla), l frame lakhra katb9a
+                render_frame_title_frames(fl, p.fps, work)
+                inputs += ["-framerate", f"{p.fps:.5f}", "-i", str(work / "t%05d.png")]
+            graph = build_filter_framed(p, box, fl.top if fl.lines else None)
         else:
             ov = build_overlay(W, H, title, category, p.duration) if title else None
             lg, lx, ly = logo_image(W)
@@ -554,14 +662,15 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
     return p
 
 
-def cover_time(p: Probe, with_title: bool) -> float:
-    """W9t d l cover f l video l mkmmla: frame (titre dima kayban) f l wost (max 2 s); 9:16 b titre: mlli l panel
-    kaykoun kaml (0.43 s → TITLE_SECONDS)."""
+def cover_time(p: Probe, with_title: bool, frame: bool | None = None) -> float:
+    """W9t d l cover f l video l mkmmla: frame (titre kayb9a mor l animation) f l wost (max 2 s); 9:16 b titre:
+    mlli l panel kaykoun kaml (0.43 s → TITLE_SECONDS)."""
     if not p.duration:
         return 0.0
-    if with_title and not framed(p):
+    if with_title and not (framed(p) if frame is None else frame):
         return min(1.5, max(0.5, min(TITLE_SECONDS, p.duration - 0.6) - 0.2), p.duration / 2)
-    return min(2.0, p.duration / 2)
+    # frame: mor l animation d titre (~1.2 s)
+    return max(0.0, min(2.0, max(p.duration / 2, 1.3), p.duration - 0.1))
 
 
 def cover_image(video: Path, dst: Path, at: float) -> Path:

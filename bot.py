@@ -333,39 +333,50 @@ async def process(client: TelegramClient, job: Job) -> None:
     t_dl = time.time() - t0
 
     loop = asyncio.get_running_loop()
-    out = job.src.parent / f"saispress_{job.id}_{int(time.time())}.mp4"
-
-    def prog(x: float) -> None:
-        asyncio.run_coroutine_threadsafe(tick("🎬 Montage…", x), loop)
-
-    t1 = time.time()
-    p = await asyncio.to_thread(montage.montage, job.src, out, job.title, job.category, prog,
-                                bool(job.with_title))
-    t_mt = time.time() - t1
-
-    await edit(job.chat_id, status, "⬆️ Kansifet l video…")
-    thumb = await asyncio.to_thread(montage.thumbnail, out, out.with_suffix(".jpg"), min(1.0, p.duration / 2))
-    cover = await asyncio.to_thread(montage.cover_image, out, out.with_name(f"saispress_cover_{job.id}.jpg"),
-                                    montage.cover_time(p, bool(job.with_title)))
+    src_p = await asyncio.to_thread(montage.probe, job.src)
+    # 9:16: jouj versions (zoom + panel, w frame b animation); 3rida: frame bo7dha
+    versions = [None] if montage.framed(src_p) else [False, True]
     chat = await msg_chat(client, job)
-    size_mb = out.stat().st_size / 1024**2
-    W, H, _ = montage.out_size(p)
-    caption = ((f"{job.title}\n\n" if job.with_title else "🏷 Ghir logo\n\n")
-               + f"{W}×{H} · {p.fps:.0f} fps · {size_mb:.1f} MB")
-    buttons = ([Button.inline("✏️ Bddel titre", data=f"rt:{job.id}".encode())] if job.with_title else []) + \
-        [Button.inline("🔁 Ghir logo" if job.with_title else "🔁 Logo + titre", data=f"sw:{job.id}".encode())]
-    sent = await client.send_file(
-        chat, str(out), caption=caption[:1000], parse_mode=None, force_document=True, thumb=str(thumb),
-        reply_to=job.msg_id, buttons=[buttons],
-        progress_callback=lambda d, t: asyncio.ensure_future(tick("⬆️ Kansifet l video…", d / t if t else 0)))
-    await client.send_file(chat, str(cover), caption="🖼 Cover (Reels → Edit cover → mn l galerie)",
-                           force_document=True, reply_to=sent.id)
+    t_mt, sizes = 0.0, []
+    for vi, frame in enumerate(versions):
+        tag = f" ({vi + 1}/{len(versions)})" if len(versions) > 1 else ""
+        out = job.src.parent / f"saispress_{job.id}_{int(time.time())}_{vi}.mp4"
+
+        def prog(x: float, tag=tag) -> None:
+            asyncio.run_coroutine_threadsafe(tick(f"🎬 Montage{tag}…", x), loop)
+
+        t1 = time.time()
+        p = await asyncio.to_thread(montage.montage, job.src, out, job.title, job.category, prog,
+                                    bool(job.with_title), frame)
+        t_mt += time.time() - t1
+
+        await edit(job.chat_id, status, f"⬆️ Kansifet l video{tag}…")
+        thumb = await asyncio.to_thread(montage.thumbnail, out, out.with_suffix(".jpg"), min(1.0, p.duration / 2))
+        cover = await asyncio.to_thread(montage.cover_image, out,
+                                        out.with_name(f"saispress_cover_{job.id}_{vi}.jpg"),
+                                        montage.cover_time(p, bool(job.with_title), frame))
+        size_mb = out.stat().st_size / 1024**2
+        sizes.append(size_mb)
+        W, H, _ = montage.out_size(p, frame)
+        style = {False: "📱 Version 9dima (zoom)\n", True: "🖼 Version frame\n"}.get(frame, "")
+        caption = (style + (f"{job.title}\n\n" if job.with_title else "🏷 Ghir logo\n\n")
+                   + f"{W}×{H} · {p.fps:.0f} fps · {size_mb:.1f} MB")
+        buttons = ([Button.inline("✏️ Bddel titre", data=f"rt:{job.id}".encode())] if job.with_title else []) + \
+            [Button.inline("🔁 Ghir logo" if job.with_title else "🔁 Logo + titre", data=f"sw:{job.id}".encode())]
+        sent = await client.send_file(
+            chat, str(out), caption=caption[:1000], parse_mode=None, force_document=True, thumb=str(thumb),
+            reply_to=job.msg_id, buttons=[buttons],
+            progress_callback=lambda d, t, tag=tag: asyncio.ensure_future(
+                tick(f"⬆️ Kansifet l video{tag}…", d / t if t else 0)))
+        await client.send_file(chat, str(cover), caption="🖼 Cover (Reels → Edit cover → mn l galerie)",
+                               force_document=True, reply_to=sent.id)
+        out.unlink(missing_ok=True)
+        thumb.unlink(missing_ok=True)
+        cover.unlink(missing_ok=True)
     done[0] = True
     await api("deleteMessage", chat_id=job.chat_id, message_id=status)
-    out.unlink(missing_ok=True)
-    thumb.unlink(missing_ok=True)
-    cover.unlink(missing_ok=True)
-    log.info("[job %s] %s · tanzil %.0fs · montage %.0fs · %.1f MB", job.id, job.filename, t_dl, t_mt, size_mb)
+    log.info("[job %s] %s · tanzil %.0fs · montage %.0fs · %s MB", job.id, job.filename, t_dl, t_mt,
+             " + ".join(f"{m:.1f}" for m in sizes))
 
 
 _chats: dict[int, object] = {}

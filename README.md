@@ -30,9 +30,11 @@ b animation, **b nefs l qualité**.
   - L fo9: logo l imin, `#rkn` l issar.
   - Ta7t l video: flèches dahbiyin + titre kbir b khatt dahbi.
   - `#عاجل`: block 7mer ta7t l video b label «عاجل».
-  - Titre w logo kaybqaw l video kamla (Reels kayakhod cover mn l frame).
+  - Titre kaydkhel b animation (flèches, mn ba3d stoura kaytkchfo men l imin, ~1.2 s) w kayb9a l video kamla
+    (Reels kayakhod cover mn l frame).
 - **Ghir logo:** nefs l frame (logo + `#rkn`) bla titre. Video 9:16: bla panel.
-- **Video 9:16 / 4:5:** kif 9bel (zoom, panel b animation).
+- **Video 9:16 / 4:5:** jouj versions: 📱 l 9dima (zoom, panel b animation) w 🖼 frame (nefs l frame d fo9),
+  kol wa7da b cover dyalha.
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
   - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.
