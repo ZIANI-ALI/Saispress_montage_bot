@@ -404,9 +404,9 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
 
     # header: logo l imin, #rkn l issar (ta7t interface d Reels ~230px)
     lg = Image.open(ASSETS / "logo.png").convert("RGBA")
-    lw = 190
+    lw = 150  # nefs 7ajm d l logo f version zoom (logo_image: 100 * 1080/720)
     lg = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
-    im.alpha_composite(lg, (FW - 60 - lw, 250))
+    im.alpha_composite(lg, (FW - 60 - lw, 291 - lg.height // 2))  # f nefs l khatt m3a #rkn
     tag_f = _font(FONT_PILL, 40)
     tag = f"{category}" if category else "Saispress"
     tw = _width(tag, tag_f)
