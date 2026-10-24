@@ -126,6 +126,7 @@ def _wrap(text: str, fnt, maxw: float) -> list[str]:
     return lines + [cur] if cur else lines
 
 
+GREEDY_SHRINK = 0.9   # greedy: a9sa ma kanssghro bach ster lowel ykoun ltwil
 ORPHAN_SHRINK = 0.75  # ster lakher fih klma wa7da: kanssghro l ktaba (7tta had nisba) bach yn9as ster
 
 
@@ -168,7 +169,13 @@ def _fit_title(text: str, name: str, maxw: float, steps, greedy: bool = False) -
         size = sizes[-1][0]
         return _font(name, size), _wrap(text, _font(name, size), maxw)
     size, lines = pick
-    if greedy:
+    if greedy:  # ster lowel howa ltwil: ila la, kanssghro chwiya (7tta GREEDY_SHRINK) bach ywli twil
+        n = len(lines)
+        for sz in range(size, math.floor(size * GREEDY_SHRINK) - 1, -1):
+            fnt = _font(name, sz)
+            cand = _wrap(text, fnt, maxw)
+            if len(cand) <= n and _width(cand[0], fnt) >= max(_width(ln, fnt) for ln in cand):
+                return fnt, cand
         return _font(name, size), lines
     n = len(lines)
     if n > 1 and len(lines[-1].split()) == 1:
