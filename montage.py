@@ -423,22 +423,11 @@ class FrameLayers:
     chev: Image.Image | None        # flèches dahbiyin
     lines: list                     # [(Image d satr + khatt dahbi, (left, right))]
     top: int                        # awal y fih chi 3onsor d titre (l crop d l animation)
-    shade: Image.Image | None = None  # full: dégradé navy ta7t titre (kaydkhel w ykhrej m3ah)
     t_out: float | None = None      # full: waqt khrja d titre (None: kayb9a 7tta l akhir)
 
 
 def _layer() -> Image.Image:
     return Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
-
-
-def _gradient(y0: int, y1: int, a0: int, a1: int) -> Image.Image:
-    """Tba9a navy men y0 l y1, alpha men a0 l a1 (b tadrij)."""
-    lay = _layer()
-    col = Image.new("L", (1, max(1, y1 - y0)))
-    n = max(1, y1 - y0 - 1)
-    col.putdata([round(a0 + (a1 - a0) * (i / n) ** 1.2) for i in range(y1 - y0)])
-    lay.paste(Image.new("RGBA", (FW, y1 - y0), (*NAVY, 255)), (0, y0), col.resize((FW, y1 - y0)))
-    return lay
 
 
 FULL_TOP = round(768 * FH / 1280)  # full: titre f nefs blasat l panel d version zoom (768/1280 d l exemple)
@@ -449,8 +438,8 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     """full: video 9:16 3amra l cadre (bla fond mdbbel); header w titre fo9ha b dégradé navy."""
     vx, vy, vw, vh = box
     urgent = urgent_cat(category)
-    if full:
-        im = _gradient(0, 560, 170, 0)
+    if full:  # bla dégradé (shadow): ghir header w titre fo9 l video
+        im = _layer()
     else:
         im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
         ImageDraw.Draw(im).rectangle((vx, vy, vx + vw - 1, vy + vh - 1), fill=(0, 0, 0, 0))  # l video bla tint
@@ -515,7 +504,6 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     asc, desc = fnt.getmetrics()
     if full:  # titre l t7t, w dégradé navy ta7to bach yban 3la ay video
         y = FULL_TOP
-        fl.shade = _gradient(y - 300, FH, 0, 215)
         fl.top = y - 20
     fl.chev = _layer()
     _chevrons(ImageDraw.Draw(fl.chev), TEXT_R, round(y + asc * 0.6), round(fnt.size * 0.5), (*GOLD, 255))
@@ -553,7 +541,7 @@ FRAME_LINE_DUR = 0.42     # satr kaytkchef (men l imin l l issar) f had l modda
 
 FRAME_OUT_STEP = 0.10     # khrja: bin stoura
 FRAME_OUT_DUR = 0.35      # khrja: satr kaytmsa7 f had l modda
-FRAME_SHADE_OUT = 0.55    # khrja: dégradé (w block عاجل) mor stoura
+FRAME_BLOCK_OUT = 0.55    # khrja: block عاجل mor stoura
 
 
 def frame_anim_end(fl: FrameLayers) -> float:
@@ -561,7 +549,7 @@ def frame_anim_end(fl: FrameLayers) -> float:
     if not n:
         return 0.0
     if fl.t_out is not None:
-        return fl.t_out + max(0, n - 1) * FRAME_OUT_STEP + FRAME_OUT_DUR + FRAME_SHADE_OUT
+        return fl.t_out + max(0, n - 1) * FRAME_OUT_STEP + FRAME_OUT_DUR + FRAME_BLOCK_OUT
     return FRAME_LINE_DELAY + max(0, n - 1) * FRAME_LINE_STEP + FRAME_LINE_DUR
 
 
@@ -599,15 +587,11 @@ def render_frame_title(fl: FrameLayers, t: float) -> Image.Image:
     to = fl.t_out
     n = len(fl.lines)
     o_lines = to + max(0, n - 1) * FRAME_OUT_STEP + FRAME_OUT_DUR if to is not None else None
-    # khrja (0 → 1): flèches / label m3a satr lowel, dégradé w block mor stoura
+    # khrja (0 → 1): flèches / label m3a satr lowel, block mor stoura
     gone = (lambda b0, b1: _prog(t, b0, b1)) if to is not None else (lambda b0, b1: 0.0)
-    if fl.shade is not None:  # dégradé: fade
-        k = _prog(t, 0.0, a + 0.30) * (1 - gone(o_lines, o_lines + FRAME_SHADE_OUT))
-        if k > 0:
-            out.alpha_composite(_alpha(fl.shade, k))
     if fl.block is not None:  # عاجل: block 7mer kaytkchef men l imin, label kayban mn ba3d
         k = _prog(t, a, a + 0.30)
-        ko = gone(o_lines, o_lines + FRAME_SHADE_OUT)
+        ko = gone(o_lines, o_lines + FRAME_BLOCK_OUT)
         if k > 0 and ko < 1:
             blk = _wipe(fl.block, (0, FW), k)
             out.alpha_composite(_unwipe(blk, (0, FW), ko) if ko > 0 else blk)
