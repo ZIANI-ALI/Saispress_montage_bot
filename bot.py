@@ -66,6 +66,7 @@ class Job:
     src: Path | None = None     # l original mnin ytnzel
     created: float = field(default_factory=time.time)
     with_title: bool | None = None  # None: mazal ma khtarch (🏷 ghir logo / 📰 logo + titre)
+    fill: bool | None = None        # 4:5...: True crop (full), False cadre; None: mazal ma khtarch
     queued: bool = False
 
 
@@ -146,6 +147,14 @@ def esc(t: str) -> str:
 # ───────────────────────── updates ─────────────────────────
 
 CHOICE = "Chno ndir l had l video?"
+
+
+FILL_CHOICE = "📐 Video machi 9:16 (b7al 4:5). F version frame:"
+
+
+def fill_buttons(job_id: str) -> list:
+    return [[{"text": "✂️ Crop (full)", "callback_data": f"fc:{job_id}"},
+             {"text": "🖼 B cadre", "callback_data": f"fb:{job_id}"}]]
 
 
 def choice_buttons(job_id: str) -> list:
@@ -229,6 +238,21 @@ async def on_callback(cb: dict) -> None:
             await ask_title(job)
         else:
             await enqueue(job)
+        return
+    if data[:3] in ("fc:", "fb:"):  # 4:5: crop wla cadre (mor tanzil)
+        job = jobs.get(data[3:])
+        if not job or job.fill is not None or job.queued:
+            await api("answerCallbackQuery", callback_query_id=cb["id"], text="Deja khtariti.")
+            return
+        if not (job.src and job.src.exists()):
+            await api("answerCallbackQuery", callback_query_id=cb["id"],
+                      text="L original ma b9ach, 3awed sifet l video.", show_alert=True)
+            return
+        job.fill = data.startswith("fc:")
+        await api("answerCallbackQuery", callback_query_id=cb["id"])
+        await api("editMessageText", chat_id=chat_id, message_id=cb["message"]["message_id"], parse_mode="HTML",
+                  text=f"{FILL_CHOICE}\n→ <b>{'✂️ Crop (full)' if job.fill else '🖼 B cadre'}</b>")
+        await enqueue(job)
         return
     if data.startswith("sw:"):  # mor l montage: ghir logo ⇄ logo + titre
         job = jobs.get(data[3:])
@@ -334,6 +358,11 @@ async def process(client: TelegramClient, job: Job) -> None:
 
     loop = asyncio.get_running_loop()
     src_p = await asyncio.to_thread(montage.probe, job.src)
+    if job.fill is None and montage.fill_choice(src_p):  # 4:5: nsowlo 9bel l montage (l original tnzel)
+        done[0] = True
+        await api("deleteMessage", chat_id=job.chat_id, message_id=status)
+        await say(job.chat_id, FILL_CHOICE, reply_to=job.msg_id, buttons=fill_buttons(job.id))
+        return
     # 9:16: jouj versions (zoom + panel, w frame b animation); 3rida: frame bo7dha
     versions = [None] if montage.framed(src_p) else [False, True]
     chat = await msg_chat(client, job)
@@ -347,7 +376,7 @@ async def process(client: TelegramClient, job: Job) -> None:
 
         t1 = time.time()
         p = await asyncio.to_thread(montage.montage, job.src, out, job.title, job.category, prog,
-                                    bool(job.with_title), frame)
+                                    bool(job.with_title), frame, job.fill is not False)
         t_mt += time.time() - t1
 
         await edit(job.chat_id, status, f"⬆️ Kansifet l video{tag}…")

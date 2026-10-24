@@ -34,7 +34,8 @@ b animation, **b nefs l qualité**.
     (Reels kayakhod cover mn l frame).
 - **Ghir logo:** nefs l frame (logo + `#rkn`) bla titre. Video 9:16: bla panel.
 - **Video 9:16 / 4:5:** jouj versions: 📱 l 9dima (zoom, panel b animation) w 🖼 frame (video full 9:16, logo + `#rkn` l fo9, titre l t7t b animation w dégradé navy),
-  kol wa7da b cover dyalha.
+  kol wa7da b cover dyalha. Video 4:5 / 3:4 (machi 9:16): l bot kaysowl mor tanzil: ✂️ Crop (full) wla
+  🖼 B cadre (video f l wost b fond mdbbel, b7al 16:9).
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
   - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.

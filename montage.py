@@ -373,6 +373,11 @@ def framed(p: Probe) -> bool:
     return p.width / p.height >= 0.9
 
 
+def fill_choice(p: Probe) -> bool:
+    """4:5, 3:4, 2:3...: machi 9:16 w machi 3rida → l user kaykhtar crop (full) wla cadre (fond mdbbel)."""
+    return not framed(p) and p.width / p.height - 9 / 16 > 0.03
+
+
 def urgent_cat(category: str | None) -> bool:
     return bool(category) and category.strip().strip("!") == "عاجل"
 
@@ -648,9 +653,10 @@ def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay | 
 
 def montage(src: Path, dst: Path, title: str, category: str | None = None,
             progress: Callable[[float], None] | None = None, with_title: bool = True,
-            frame: bool | None = None) -> Probe:
+            frame: bool | None = None, fill: bool = True) -> Probe:
     """with_title=False: ghir logo (w #rkn f frame). frame None: 3la 7sab l format (framed); True: frame 7tta
-    l 9:16 (titre b animation); False: zoom 9:16 (panel)."""
+    l 9:16 (titre b animation); False: zoom 9:16 (panel). fill (frame d video machi 3rida): True = crop 7tta
+    t3mer l cadre, False = f l wost b fond mdbbel (b7al 16:9)."""
     p = probe(src)
     frame = framed(p) if frame is None else frame
     W, H, native = out_size(p, frame)
@@ -661,7 +667,7 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
     work = Path(tempfile.mkdtemp(prefix="ov_"))
     try:
         if frame:
-            full = not framed(p)  # 9:16 / 4:5: l video 3amra l cadre
+            full = not framed(p) and fill  # 9:16 / 4:5 (crop): l video 3amra l cadre
             box = (0, 0, FW, FH) if full else video_box(p)
             fl = frame_layers(box, title or None, category, full)
             fl.base.save(work / "frame.png")
