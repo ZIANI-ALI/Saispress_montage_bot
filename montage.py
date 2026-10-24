@@ -202,17 +202,23 @@ def _prog(t: float, a: float, b: float) -> float:
     return _ease((t - a) / (b - a))
 
 
-PANEL_SCALE = 0.88  # panel w ktaba sghar mn l exemple (l 7afa l imniya f blasetha)
+PANEL_SCALE = 0.88  # panel w ktaba sghar mn l exemple
 
 
 def build_overlay(W: int, H: int, title: str, category: str | None, duration: float) -> Overlay:
+    """Panel mcentri, 3ardo 3la 9ad l ktaba (bla blasa khawya), b 3ard l exemple f l a9sa."""
     s = W / 720  # l exemple 720x1280, kolchi kaytkber b nisba
     k = s * PANEL_SCALE
-    px1 = round(663 * s)
-    px0 = px1 - round(613 * k)                        # panel
     pad_r, pad_l = round(17 * k), round(16 * k)
     pad_t, pad_b = round(PAD_T * k), round(PAD_B * k)
-    fnt, lines = _fit(title, px1 - px0 - pad_r - pad_l, k)
+    fnt, lines = _fit(title, round(613 * k) - pad_r - pad_l, k)
+    pw = pad_r + pad_l + math.ceil(max(_width(ln, fnt) for ln in lines))
+    if category:  # l pill ma tkhrejch 3la l panel
+        pw = max(pw, math.ceil(_width(category, _font(FONT_PILL, round(22 * k)))) + 2 * round(15 * k)
+                 + round(8 * s))
+    bar_w = round(8 * s)
+    px0 = (W - pw - bar_w) // 2                        # panel + khatt gold mcentrin
+    px1 = px0 + pw
     asc, desc = fnt.getmetrics()
     lh = round(fnt.size * LINE_H)
     ptop_abs = round(768 * s)
@@ -241,7 +247,7 @@ def build_overlay(W: int, H: int, title: str, category: str | None, duration: fl
     pill = layer()
     if category:
         pf = _font(FONT_PILL, round(22 * k))
-        right = ox(round(655 * s))
+        right = ox(px1 - round(8 * s))
         tw = _width(category, pf)
         left = right - tw - 2 * round(15 * k)
         d = ImageDraw.Draw(pill)
