@@ -19,7 +19,7 @@ b animation, **b nefs l qualité**.
    M3a kol video katji **cover** (JPEG 1080×1920 b nefs l design) l Reels: «Edit cover» → mn l galerie.
    Hadchi kaykhdem ghir f nefs l run, ya3ni ~5 sa3at men ba3d l montage.
 
-`/help`: l m3awna · `/cancel`: tlghi l 3onwan li kaytsenna.
+`/help`: l m3awna · `/cancel`: tlghi kolchi (l montage li khddam, li f l queue, w l 3onwan li kaytsenna).
 
 ## Chno kaydir l montage
 

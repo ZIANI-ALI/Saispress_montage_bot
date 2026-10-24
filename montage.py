@@ -380,7 +380,10 @@ def logo_image(W: int) -> tuple[Image.Image, int, int]:
 
 FW, FH = 1080, 1920
 VID_TOP = 560          # l video f l wost (fo9ha header, ta7tha titre)
-VID_MAX_H = 760        # video 4:3 / mrabba3a: ma tklach l blasa d titre
+VID_MIN_TOP = 360      # video 3alya (4:3, mrabba3a): kat-tla3 7tta ta7t l header
+VID_MAX_H = 1080       # 3ard kaml (lasqa m3a jnab) 7tta l mrabba3a; ktar: katdye9
+TITLE_ROOM = 300       # blasa d titre ta7t l video
+TITLE_GAP = 36         # bin l video w titre
 TEXT_R, TEXT_L = 940, 70   # nass bin had jouj (l imin: icons d Reels)
 TEXT_MAX_Y = 1640      # ta7t: caption w boutons d Instagram
 
@@ -404,7 +407,8 @@ def video_box(p: Probe) -> tuple[int, int, int, int]:
     w, h = FW, _even(FW * p.height / p.width)
     if h > VID_MAX_H:
         w, h = _even(VID_MAX_H * p.width / p.height), VID_MAX_H
-    return (FW - w) // 2, VID_TOP, w, h
+    y = max(VID_MIN_TOP, min(VID_TOP, TEXT_MAX_Y - TITLE_ROOM - h))
+    return (FW - w) // 2, y, w, h
 
 
 def _chevrons(d: ImageDraw.ImageDraw, x: int, cy: int, size: int, fill) -> None:
@@ -502,7 +506,7 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
         return fl
 
     right = TEXT_R - 70  # l imin: flèches dahbiyin 9bel titre
-    y = top + 64
+    y = top + TITLE_GAP
     room = TEXT_MAX_Y - (FULL_TOP if full else y)
     sizes = ((((2, 76, 66), (3, 66, 56)),) if full  # full: ster lowel twil, lba9i l ster tani
              else (((2, 84, 70), (3, 74, 60)), ((3, 60, 50), (4, 52, 44))))
@@ -756,12 +760,17 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
             cmd += ["-c:a", "aac", "-b:a", "256k"]
         cmd += ["-movflags", "+faststart", str(dst)]
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        for line in proc.stdout:
-            if progress and line.startswith("out_time_us=") and p.duration:
-                try:
-                    progress(min(1.0, int(line.split("=")[1]) / 1e6 / p.duration))
-                except ValueError:
-                    pass
+        try:
+            for line in proc.stdout:
+                if progress and line.startswith("out_time_us=") and p.duration:
+                    try:
+                        progress(min(1.0, int(line.split("=")[1]) / 1e6 / p.duration))
+                    except ValueError:
+                        pass
+        except BaseException:  # progress kaytl9 exception (b7al /cancel): nwe99fo ffmpeg
+            proc.kill()
+            proc.wait()
+            raise
         err = proc.stderr.read()
         if proc.wait() != 0:
             raise RuntimeError(f"ffmpeg fchel: {err.strip()[-400:]}")

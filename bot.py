@@ -51,7 +51,7 @@ HELP = (
     "Ila khtariti titre w ma ktebtich caption, ghansowlek 3la l 3onwan.\n"
     "Mn ba3d l montage: «✏️ Bddel titre» w «🔁» (ghir logo ⇄ logo + titre) bla ma t3awed tsifet l video.\n"
     "M3a l video katji <b>cover</b> (JPEG) l Reels.\n"
-    "/cancel: tlghi l 3onwan li kantsenna."
+    "/cancel: tlghi kolchi: l montage li khddam, li f l queue, w l 3onwan li kantsenna."
 )
 
 
@@ -68,12 +68,18 @@ class Job:
     with_title: bool | None = None  # None: mazal ma khtarch (🏷 ghir logo / 📰 logo + titre)
     fill: bool | None = None        # 4:5...: True crop (full), False cadre; None: mazal ma khtarch
     queued: bool = False
+    cancelled: bool = False
+
+
+class Cancelled(Exception):
+    """/cancel: l job tlgha."""
 
 
 jobs: dict[str, Job] = {}
 waiting_title: dict[int, str] = {}  # chat_id -> job_id li kantsennaw lih l 3onwan
 queue: asyncio.Queue[str] = asyncio.Queue()
 busy: str | None = None
+busy_task: asyncio.Task | None = None
 _ids = itertools.count(1)
 
 
@@ -176,6 +182,27 @@ async def enqueue(job: Job) -> None:
         await say(job.chat_id, f"🕒 F l queue: {ahead} 9bel menha.", reply_to=job.msg_id)
 
 
+def cancel_all(chat_id: int) -> int:
+    """Kayms7 l jobs d had chat men l queue w kayw99ef li khddam. Kayrje3 ch7al tlgha."""
+    keep, n = [], 0
+    while not queue.empty():
+        jid = queue.get_nowait()
+        queue.task_done()
+        job = jobs.get(jid)
+        if job and job.chat_id == chat_id:
+            job.queued, n = False, n + 1
+        else:
+            keep.append(jid)
+    for jid in keep:
+        queue.put_nowait(jid)
+    job = jobs.get(busy) if busy else None
+    if job and job.chat_id == chat_id and busy_task and not busy_task.done():
+        job.cancelled = True  # ffmpeg kaywe99ef f l progress (thread), w l task kattlgha
+        busy_task.cancel()
+        n += 1
+    return n
+
+
 async def on_message(msg: dict) -> None:
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()
@@ -185,7 +212,8 @@ async def on_message(msg: dict) -> None:
         return
     if text == "/cancel":
         waiting_title.pop(chat_id, None)
-        await say(chat_id, "✔️ Tlgha.")
+        n = cancel_all(chat_id)
+        await say(chat_id, f"✔️ Tlgha ({n} video)." if n else "✔️ Tlgha.")
         return
 
     vid = video_of(msg)
@@ -372,6 +400,8 @@ async def process(client: TelegramClient, job: Job) -> None:
         out = job.src.parent / f"saispress_{job.id}_{int(time.time())}_{vi}.mp4"
 
         def prog(x: float, tag=tag) -> None:
+            if job.cancelled:
+                raise Cancelled
             asyncio.run_coroutine_threadsafe(tick(f"🎬 Montage{tag}…", x), loop)
 
         t1 = time.time()
@@ -420,19 +450,25 @@ async def msg_chat(client: TelegramClient, job: Job):
 
 
 async def worker(client: TelegramClient) -> None:
-    global busy
+    global busy, busy_task
     while True:
         job_id = await queue.get()
         busy = job_id
         job = jobs[job_id]
+        job.cancelled = False
+        busy_task = asyncio.create_task(process(client, job))
         try:
-            await process(client, job)
+            await busy_task
+        except (asyncio.CancelledError, Cancelled):
+            if not job.cancelled:  # l worker bo7do tlgha (akhir d run)
+                raise
+            log.info("[job %s] tlgha", job_id)
         except Exception as e:
             log.exception("[job %s] fchel", job_id)
             await say(job.chat_id, f"❌ Montage fchel: {esc(str(e))[:300]}", reply_to=job.msg_id)
         finally:
             job.queued = False
-            busy = None
+            busy, busy_task = None, None
             queue.task_done()
             _free_space()
 
@@ -448,7 +484,7 @@ async def main() -> None:
     if hook and hook.get("url"):  # getUpdates ma kaykhdemch m3a webhook
         await api("deleteWebhook")
     await api("setMyCommands", commands=[{"command": "help", "description": "Kifach nkhdem b l bot"},
-                                         {"command": "cancel", "description": "Lghi l 3onwan li kantsenna"}])
+                                         {"command": "cancel", "description": "Lghi kolchi (montage, queue, 3onwan)"}])
     client = TelegramClient(StringSession(), API_ID, API_HASH, receive_updates=False)
     await client.start(bot_token=TOKEN)
     log.info("[start] @%s · %d user · %.0f d9i9a", me["username"] if me else "?", len(ALLOWED), RUN_MINUTES)
