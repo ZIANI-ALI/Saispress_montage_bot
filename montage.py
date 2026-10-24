@@ -3,7 +3,8 @@
 Video 3rida (16:9, 4:3, mrabba3a): frame 9:16 (frame_layout) b7al l reels d l akhbar: l video kamla f l wost
 (bla crop), fond = nefs l video mdbbla, l fo9 logo + #rkn, lta7t titre kbir (flèches dahbiyin l imin).
 L titre f l frame kaydkhel b animation (flèches, mn ba3d stoura kaytkchfo men l imin) w kayb9a 7tta l akhir.
-Video 9:16: l bot kaydir jouj versions: zoom + panel (frame=False) w frame (frame=True).
+Video 9:16: l bot kaydir jouj versions: zoom + panel (frame=False) w frame (frame=True). F frame d 9:16 l video
+3amra l cadre (full): header l fo9 w titre l t7t, b dégradé navy bach ybanou.
 «Ghir logo» (with_title=False): nefs l montage bla titre. Cover (cover_image): frame JPEG mn l video l mkmmla.
 F عاجل: block 7mer ta7t l video b label «عاجل».
 
@@ -406,12 +407,30 @@ def _layer() -> Image.Image:
     return Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
 
 
-def frame_layers(box: tuple[int, int, int, int], title: str | None, category: str | None) -> FrameLayers:
+def _gradient(y0: int, y1: int, a0: int, a1: int) -> Image.Image:
+    """Tba9a navy men y0 l y1, alpha men a0 l a1 (b tadrij)."""
+    lay = _layer()
+    col = Image.new("L", (1, max(1, y1 - y0)))
+    n = max(1, y1 - y0 - 1)
+    col.putdata([round(a0 + (a1 - a0) * (i / n) ** 1.2) for i in range(y1 - y0)])
+    lay.paste(Image.new("RGBA", (FW, y1 - y0), (*NAVY, 255)), (0, y0), col.resize((FW, y1 - y0)))
+    return lay
+
+
+FULL_BOTTOM = TEXT_MAX_Y  # full: akhir satr d titre (fo9 caption d Instagram)
+
+
+def frame_layers(box: tuple[int, int, int, int], title: str | None, category: str | None,
+                 full: bool = False) -> FrameLayers:
+    """full: video 9:16 3amra l cadre (bla fond mdbbel); header w titre fo9ha b dégradé navy."""
     vx, vy, vw, vh = box
     urgent = urgent_cat(category)
-    im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
+    if full:
+        im = _gradient(0, 560, 170, 0)
+    else:
+        im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
+        ImageDraw.Draw(im).rectangle((vx, vy, vx + vw - 1, vy + vh - 1), fill=(0, 0, 0, 0))  # l video bla tint
     d = ImageDraw.Draw(im)
-    d.rectangle((vx, vy, vx + vw - 1, vy + vh - 1), fill=(0, 0, 0, 0))  # l video bla tint
 
     # header: logo l imin, #rkn l issar (ta7t interface d Reels ~230px)
     lg = Image.open(ASSETS / "logo.png").convert("RGBA")
@@ -436,8 +455,12 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     if urgent:  # b7al l akhbar 3ajila: block 7mer ta7t l video, label «عاجل», titre byed
         fnt, lines = _fit_title(title, FONT_TITLE, TEXT_R - TEXT_L, ((3, 70, 58), (4, 58, 46)))
         lh = round(fnt.size * 1.32)
+        if full:  # block l t7t (fo9 caption d Instagram)
+            bottom = FH - 200
+            top = bottom - max(96 + lh * len(lines) + 70, 380)
         y_text = top + 96
-        bottom = min(FH - 200, max(y_text + lh * len(lines) + 70, top + 380))
+        if not full:
+            bottom = min(FH - 200, max(y_text + lh * len(lines) + 70, top + 380))
         fl.block = _layer()
         ImageDraw.Draw(fl.block).rectangle((0, top, FW, bottom), fill=(*RED, 255))
         fl.label = _layer()
@@ -455,15 +478,19 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
             fl.lines.append((lay, (TEXT_R - _width(ln, fnt) - 4, TEXT_R + 4)))
         return fl
 
-    y = top + 64
     right = TEXT_R - 70  # l imin: flèches dahbiyin 9bel titre
-    room = TEXT_MAX_Y - y
+    y = top + 64
+    room = TEXT_MAX_Y - y if not full else 560
     for steps in (((2, 84, 70), (3, 74, 60)), ((3, 60, 50), (4, 52, 44))):
         fnt, lines = _fit_title(title, FONT_TITLE, right - TEXT_L, steps)
         lh = round(fnt.size * 1.42)
         if lh * len(lines) <= room:
             break
     asc, desc = fnt.getmetrics()
+    if full:  # titre l t7t, w dégradé navy ta7to bach yban 3la ay video
+        y = FULL_BOTTOM - lh * len(lines)
+        fl.base.alpha_composite(_gradient(y - 300, FH, 0, 215))
+        fl.top = y - 20
     fl.chev = _layer()
     _chevrons(ImageDraw.Draw(fl.chev), TEXT_R, round(y + asc * 0.6), round(fnt.size * 0.5), (*GOLD, 255))
     for i, ln in enumerate(lines):
@@ -479,10 +506,11 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     return fl
 
 
-def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: str | None) -> Image.Image:
+def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: str | None,
+                  full: bool = False) -> Image.Image:
     """Overlay 1080x1920 (RGBA) l l video kamla: tint navy 3la l fond, header, titre (wla block عاجل).
     title None: ghir logo w #rkn."""
-    fl = frame_layers(box, title, category)
+    fl = frame_layers(box, title, category, full)
     im = fl.base.copy()
     for lay in (fl.block, fl.label, fl.chev, *(ln for ln, _ in fl.lines)):
         if lay is not None:
@@ -559,6 +587,11 @@ def build_filter_framed(p: Probe, box: tuple[int, int, int, int], anim_y: int | 
                      "tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv")
     chain.append("format=yuv420p")
     pre = ",".join(chain)
+    if (vw, vh) == (FW, FH):  # full: l video 3amra l cadre (crop f l wst ila machi 9:16 bdbt)
+        g = (f"[0:v]{pre},scale={FW}:{FH}:force_original_aspect_ratio=increase:flags=lanczos,"
+             f"crop={FW}:{FH},setsar=1[base];")
+        return g + (f"[base][1:v]overlay=0:0[fr];[fr][2:v]overlay=0:{anim_y}:eof_action=repeat,format=yuv420p[v]"
+                    if anim_y is not None else "[base][1:v]overlay=0:0,format=yuv420p[v]")
     # fond: nefs l video sghira, mdbbla, mkebbra (asra3 mn blur 3la 1080x1920)
     return (f"[0:v]{pre},split[a][b];"
             f"[a]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=12:3,"
@@ -628,8 +661,9 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
     work = Path(tempfile.mkdtemp(prefix="ov_"))
     try:
         if frame:
-            box = video_box(p)
-            fl = frame_layers(box, title or None, category)
+            full = not framed(p)  # 9:16 / 4:5: l video 3amra l cadre
+            box = (0, 0, FW, FH) if full else video_box(p)
+            fl = frame_layers(box, title or None, category, full)
             fl.base.save(work / "frame.png")
             inputs = ["-i", str(work / "frame.png")]  # tswira wa7da l video kamla
             if fl.lines:  # titre b animation (dkhla), l frame lakhra katb9a

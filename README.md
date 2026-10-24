@@ -33,7 +33,7 @@ b animation, **b nefs l qualité**.
   - Titre kaydkhel b animation (flèches, mn ba3d stoura kaytkchfo men l imin, ~1.2 s) w kayb9a l video kamla
     (Reels kayakhod cover mn l frame).
 - **Ghir logo:** nefs l frame (logo + `#rkn`) bla titre. Video 9:16: bla panel.
-- **Video 9:16 / 4:5:** jouj versions: 📱 l 9dima (zoom, panel b animation) w 🖼 frame (nefs l frame d fo9),
+- **Video 9:16 / 4:5:** jouj versions: 📱 l 9dima (zoom, panel b animation) w 🖼 frame (video full 9:16, logo + `#rkn` l fo9, titre l t7t b animation w dégradé navy),
   kol wa7da b cover dyalha.
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
