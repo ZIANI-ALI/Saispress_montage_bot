@@ -430,16 +430,26 @@ def _layer() -> Image.Image:
     return Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
 
 
+def _gradient(y0: int, y1: int, a0: int, a1: int) -> Image.Image:
+    """Tba9a navy men y0 l y1, alpha men a0 l a1 (b tadrij)."""
+    lay = _layer()
+    col = Image.new("L", (1, max(1, y1 - y0)))
+    n = max(1, y1 - y0 - 1)
+    col.putdata([round(a0 + (a1 - a0) * (i / n) ** 1.2) for i in range(y1 - y0)])
+    lay.paste(Image.new("RGBA", (FW, y1 - y0), (*NAVY, 255)), (0, y0), col.resize((FW, y1 - y0)))
+    return lay
+
+
 FULL_TOP = round(768 * FH / 1280)  # full: titre f nefs blasat l panel d version zoom (768/1280 d l exemple)
 
 
 def frame_layers(box: tuple[int, int, int, int], title: str | None, category: str | None,
                  full: bool = False) -> FrameLayers:
-    """full: video 9:16 3amra l cadre (bla fond mdbbel); header w titre fo9ha b dégradé navy."""
+    """full: video 9:16 3amra l cadre (bla fond mdbbel); header (b dégradé navy) w titre (bla shadow) fo9ha."""
     vx, vy, vw, vh = box
     urgent = urgent_cat(category)
-    if full:  # bla dégradé (shadow): ghir header w titre fo9 l video
-        im = _layer()
+    if full:  # dégradé navy ghir fo9 (header); titre bla shadow
+        im = _gradient(0, 560, 170, 0)
     else:
         im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
         ImageDraw.Draw(im).rectangle((vx, vy, vx + vw - 1, vy + vh - 1), fill=(0, 0, 0, 0))  # l video bla tint
@@ -502,7 +512,7 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
         if lh * len(lines) <= room:
             break
     asc, desc = fnt.getmetrics()
-    if full:  # titre l t7t, w dégradé navy ta7to bach yban 3la ay video
+    if full:  # titre l t7t (bla dégradé)
         y = FULL_TOP
         fl.top = y - 20
     fl.chev = _layer()
