@@ -202,19 +202,24 @@ def _prog(t: float, a: float, b: float) -> float:
     return _ease((t - a) / (b - a))
 
 
+PANEL_SCALE = 0.88  # panel w ktaba sghar mn l exemple (l 7afa l imniya f blasetha)
+
+
 def build_overlay(W: int, H: int, title: str, category: str | None, duration: float) -> Overlay:
     s = W / 720  # l exemple 720x1280, kolchi kaytkber b nisba
-    px0, px1 = round(50 * s), round(663 * s)          # panel (l groupe kamel mcentri)
-    pad_r, pad_l = round(17 * s), round(16 * s)
-    pad_t, pad_b = round(PAD_T * s), round(PAD_B * s)
-    fnt, lines = _fit(title, px1 - px0 - pad_r - pad_l, s)
+    k = s * PANEL_SCALE
+    px1 = round(663 * s)
+    px0 = px1 - round(613 * k)                        # panel
+    pad_r, pad_l = round(17 * k), round(16 * k)
+    pad_t, pad_b = round(PAD_T * k), round(PAD_B * k)
+    fnt, lines = _fit(title, px1 - px0 - pad_r - pad_l, k)
     asc, desc = fnt.getmetrics()
     lh = round(fnt.size * LINE_H)
     ptop_abs = round(768 * s)
     ph = pad_t + lh * (len(lines) - 1) + asc + desc + pad_b
     bar_x0, bar_x1 = px1 + round(1 * s), px1 + round(8 * s)
 
-    pill_h = round(28 * s)
+    pill_h = round(28 * k)
     pill_gap = round(1 * s)
     x0 = px0
     x1 = bar_x1 + round(2 * s)
@@ -230,18 +235,18 @@ def build_overlay(W: int, H: int, title: str, category: str | None, duration: fl
     ImageDraw.Draw(panel).rectangle((0, pt, ox(px1) - 1, oh - 1), fill=(*NAVY, PANEL_ALPHA))
 
     bar = layer()
-    ImageDraw.Draw(bar).rectangle((ox(bar_x0), pt + round(32 * s), ox(bar_x1) - 1, oh - round(38 * s)),
+    ImageDraw.Draw(bar).rectangle((ox(bar_x0), pt + round(32 * k), ox(bar_x1) - 1, oh - round(38 * k)),
                                   fill=(*GOLD, 255))
 
     pill = layer()
     if category:
-        pf = _font(FONT_PILL, round(22 * s))
+        pf = _font(FONT_PILL, round(22 * k))
         right = ox(round(655 * s))
         tw = _width(category, pf)
-        left = right - tw - 2 * round(15 * s)
+        left = right - tw - 2 * round(15 * k)
         d = ImageDraw.Draw(pill)
         d.rounded_rectangle((left, 0, right, pill_h), radius=pill_h // 2, fill=(*GOLD, 255))
-        d.text((right - round(15 * s), pill_h / 2 + round(1 * s)), category, font=pf, fill=NAVY,
+        d.text((right - round(15 * k), pill_h / 2 + round(1 * s)), category, font=pf, fill=NAVY,
                anchor="rm", direction="rtl")
 
     text = layer()
