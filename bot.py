@@ -363,8 +363,8 @@ async def process(client: TelegramClient, job: Job) -> None:
         await api("deleteMessage", chat_id=job.chat_id, message_id=status)
         await say(job.chat_id, FILL_CHOICE, reply_to=job.msg_id, buttons=fill_buttons(job.id))
         return
-    # 9:16: jouj versions (zoom + panel, w frame b animation); 3rida: frame bo7dha
-    versions = [None] if montage.framed(src_p) else [False, True]
+    # 9:16: jouj versions (frame b animation 9bel, mn ba3d zoom + panel); 3rida: frame bo7dha
+    versions = [None] if montage.framed(src_p) else [True, False]
     chat = await msg_chat(client, job)
     t_mt, sizes = 0.0, []
     for vi, frame in enumerate(versions):
