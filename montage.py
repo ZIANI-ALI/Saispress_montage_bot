@@ -598,18 +598,19 @@ def render_frame_title(fl: FrameLayers, t: float) -> Image.Image:
     n = len(fl.lines)
     o_lines = to + max(0, n - 1) * FRAME_OUT_STEP + FRAME_OUT_DUR if to is not None else None
     # khrja (0 → 1): flèches / label m3a satr lowel, block mor stoura
-    gone = (lambda b0, b1: _prog(t, b0, b1)) if to is not None else (lambda b0, b1: 0.0)
+    def gone(b0: float | None, d: float) -> float:  # khrja men b0 f d; titre bla khrja (to None): 0
+        return _prog(t, b0, b0 + d) if b0 is not None else 0.0
     if fl.block is not None:  # عاجل: block 7mer kaytkchef men l imin, label kayban mn ba3d
         k = _prog(t, a, a + 0.30)
-        ko = gone(o_lines, o_lines + FRAME_BLOCK_OUT)
+        ko = gone(o_lines, FRAME_BLOCK_OUT)
         if k > 0 and ko < 1:
             blk = _wipe(fl.block, (0, FW), k)
             out.alpha_composite(_unwipe(blk, (0, FW), ko) if ko > 0 else blk)
-        k = _prog(t, a + 0.20, a + 0.38) * (1 - gone(to, to + 0.25))
+        k = _prog(t, a + 0.20, a + 0.38) * (1 - gone(to, 0.25))
         if k > 0:
             out.alpha_composite(_alpha(_shift(fl.label, round(40 * (1 - k))), k))
     if fl.chev is not None:  # flèches: fade + jaya men l imin
-        k = _prog(t, a, a + 0.30) * (1 - gone(to, to + 0.25))
+        k = _prog(t, a, a + 0.30) * (1 - gone(to, 0.25))
         if k > 0:
             out.alpha_composite(_alpha(_shift(fl.chev, round(50 * (1 - k))), k))
     for i, (lay, span) in enumerate(fl.lines):
