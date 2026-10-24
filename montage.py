@@ -486,7 +486,9 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     right = TEXT_R - 70  # l imin: flèches dahbiyin 9bel titre
     y = top + 64
     room = TEXT_MAX_Y - (FULL_TOP if full else y)
-    for steps in (((2, 84, 70), (3, 74, 60)), ((3, 60, 50), (4, 52, 44))):
+    sizes = ((((2, 66, 50), (3, 50, 44)),) if full  # full: nefs taille d version zoom (2 stoura)
+             else (((2, 84, 70), (3, 74, 60)), ((3, 60, 50), (4, 52, 44))))
+    for steps in sizes:
         fnt, lines = _fit_title(title, FONT_TITLE, right - TEXT_L, steps)
         lh = round(fnt.size * 1.42)
         if lh * len(lines) <= room:
