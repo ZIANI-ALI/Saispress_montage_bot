@@ -153,9 +153,10 @@ def _balance(text: str, fnt, maxw: float, n: int) -> list[str] | None:
     return [" ".join(words[best[i]:best[i + 1]]) for i in range(n)] if best else None
 
 
-def _fit_title(text: str, name: str, maxw: float, steps) -> tuple:
+def _fit_title(text: str, name: str, maxw: float, steps, greedy: bool = False) -> tuple:
     """steps = [(max_lines, hi, lo), ...]: akbar taille li kaydkhel fiha titre. Ila ster lakher fih ghir klma
-    wa7da, kanssghro (7tta ORPHAN_SHRINK) bach ykhrej b ster a9al. Mn ba3d stoura mtwazniin (_balance)."""
+    wa7da, kanssghro (7tta ORPHAN_SHRINK) bach ykhrej b ster a9al. Mn ba3d stoura mtwazniin (_balance).
+    greedy: ster lowel 3amer 7tta l 3ard kaml, w lba9i l ster li moraha (wakha ykoun fih ghir klma)."""
     sizes = [(size, max_lines) for max_lines, hi, lo in steps for size in range(hi, lo - 1, -1)]
     pick = None
     for size, max_lines in sizes:
@@ -167,6 +168,8 @@ def _fit_title(text: str, name: str, maxw: float, steps) -> tuple:
         size = sizes[-1][0]
         return _font(name, size), _wrap(text, _font(name, size), maxw)
     size, lines = pick
+    if greedy:
+        return _font(name, size), lines
     n = len(lines)
     if n > 1 and len(lines[-1].split()) == 1:
         for smaller in sorted({sz for sz, _ in sizes if size * ORPHAN_SHRINK <= sz < size}, reverse=True):
@@ -178,8 +181,10 @@ def _fit_title(text: str, name: str, maxw: float, steps) -> tuple:
 
 
 def _fit(text: str, maxw: float, s: float):
-    """3 stoura f l a9sa b taille kbira; ila ma dkhelch kanssghro, w f l akhir 4 stoura."""
-    return _fit_title(text, FONT_TITLE, maxw, [(3, round(50 * s), round(36 * s)), (4, round(36 * s), round(30 * s))])
+    """2 stoura ila dkhel b taille kbira chwiya, sinon 3 stoura; ila ma dkhelch kanssghro, w f l akhir 4 stoura.
+    Greedy: ster lowel twil (l panel dima 3rid, machi mrabba3)."""
+    return _fit_title(text, FONT_TITLE, maxw, [(2, round(50 * s), round(42 * s)), (3, round(50 * s), round(36 * s)),
+                                               (4, round(36 * s), round(30 * s))], greedy=True)
 
 
 # ───────────────────────── overlay d titre ─────────────────────────
@@ -265,9 +270,14 @@ def build_overlay(W: int, H: int, title: str, category: str | None, duration: fl
         d.text((right, top + i * lh), ln, font=fnt, fill=WHITE, anchor="ra", direction="rtl")
         lefts.append(right - _width(ln, fnt))
 
-    t_out = max(1.5, min(TITLE_SECONDS, duration - 0.6)) if duration else TITLE_SECONDS
+    t_out = title_out(duration)
     return Overlay(x0, y0, {"panel": panel, "bar": bar, "pill": pill, "text": text},
                    (int(min(lefts)) - 2, right + 2), t_out + 0.40, t_out)
+
+
+def title_out(duration: float) -> float:
+    """Waqt fach l titre kaybda ykhrej (b animation)."""
+    return max(1.5, min(TITLE_SECONDS, duration - 0.6)) if duration else TITLE_SECONDS
 
 
 def _alpha(img: Image.Image, k: float) -> Image.Image:
@@ -406,6 +416,8 @@ class FrameLayers:
     chev: Image.Image | None        # flèches dahbiyin
     lines: list                     # [(Image d satr + khatt dahbi, (left, right))]
     top: int                        # awal y fih chi 3onsor d titre (l crop d l animation)
+    shade: Image.Image | None = None  # full: dégradé navy ta7t titre (kaydkhel w ykhrej m3ah)
+    t_out: float | None = None      # full: waqt khrja d titre (None: kayb9a 7tta l akhir)
 
 
 def _layer() -> Image.Image:
@@ -486,17 +498,17 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     right = TEXT_R - 70  # l imin: flèches dahbiyin 9bel titre
     y = top + 64
     room = TEXT_MAX_Y - (FULL_TOP if full else y)
-    sizes = ((((2, 66, 50), (3, 50, 44)),) if full  # full: nefs taille d version zoom (2 stoura)
+    sizes = ((((2, 76, 66), (3, 66, 56)),) if full  # full: ster lowel twil, lba9i l ster tani
              else (((2, 84, 70), (3, 74, 60)), ((3, 60, 50), (4, 52, 44))))
     for steps in sizes:
-        fnt, lines = _fit_title(title, FONT_TITLE, right - TEXT_L, steps)
+        fnt, lines = _fit_title(title, FONT_TITLE, right - TEXT_L, steps, greedy=full)
         lh = round(fnt.size * 1.42)
         if lh * len(lines) <= room:
             break
     asc, desc = fnt.getmetrics()
     if full:  # titre l t7t, w dégradé navy ta7to bach yban 3la ay video
         y = FULL_TOP
-        fl.base.alpha_composite(_gradient(y - 300, FH, 0, 215))
+        fl.shade = _gradient(y - 300, FH, 0, 215)
         fl.top = y - 20
     fl.chev = _layer()
     _chevrons(ImageDraw.Draw(fl.chev), TEXT_R, round(y + asc * 0.6), round(fnt.size * 0.5), (*GOLD, 255))
@@ -532,9 +544,18 @@ FRAME_LINE_STEP = 0.16    # bin stoura
 FRAME_LINE_DUR = 0.42     # satr kaytkchef (men l imin l l issar) f had l modda
 
 
+FRAME_OUT_STEP = 0.10     # khrja: bin stoura
+FRAME_OUT_DUR = 0.35      # khrja: satr kaytmsa7 f had l modda
+FRAME_SHADE_OUT = 0.55    # khrja: dégradé (w block عاجل) mor stoura
+
+
 def frame_anim_end(fl: FrameLayers) -> float:
     n = len(fl.lines)
-    return FRAME_LINE_DELAY + max(0, n - 1) * FRAME_LINE_STEP + FRAME_LINE_DUR if n else 0.0
+    if not n:
+        return 0.0
+    if fl.t_out is not None:
+        return fl.t_out + max(0, n - 1) * FRAME_OUT_STEP + FRAME_OUT_DUR + FRAME_SHADE_OUT
+    return FRAME_LINE_DELAY + max(0, n - 1) * FRAME_LINE_STEP + FRAME_LINE_DUR
 
 
 def _wipe(lay: Image.Image, span: tuple[float, float], k: float) -> Image.Image:
@@ -554,26 +575,56 @@ def _shift(lay: Image.Image, dx: int) -> Image.Image:
     return out
 
 
+def _unwipe(lay: Image.Image, span: tuple[float, float], k: float) -> Image.Image:
+    """Khrja: kaytmsa7 men l imin l l issar (b7al ma dkhel): k=0 kamel, k=1 walou."""
+    left, right = span
+    edge = right - (right - left) * k
+    m = _row_mask(lay.size, [(0, max(0, int(edge)), 1.0)])
+    out = lay.copy()
+    out.putalpha(ImageChops.multiply(lay.getchannel("A"), m))
+    return out
+
+
 def render_frame_title(fl: FrameLayers, t: float) -> Image.Image:
-    """Tba9at d titre f l w9t t (bla base), kolha f 1080x1920."""
+    """Tba9at d titre f l w9t t (bla base), kolha f 1080x1920. fl.t_out: kolchi kaykhrej b animation."""
     out = _layer()
     a = FRAME_ANIM_START
+    to = fl.t_out
+    n = len(fl.lines)
+    o_lines = to + max(0, n - 1) * FRAME_OUT_STEP + FRAME_OUT_DUR if to is not None else None
+    # khrja (0 → 1): flèches / label m3a satr lowel, dégradé w block mor stoura
+    gone = (lambda b0, b1: _prog(t, b0, b1)) if to is not None else (lambda b0, b1: 0.0)
+    if fl.shade is not None:  # dégradé: fade
+        k = _prog(t, 0.0, a + 0.30) * (1 - gone(o_lines, o_lines + FRAME_SHADE_OUT))
+        if k > 0:
+            out.alpha_composite(_alpha(fl.shade, k))
     if fl.block is not None:  # عاجل: block 7mer kaytkchef men l imin, label kayban mn ba3d
         k = _prog(t, a, a + 0.30)
-        if k > 0:
-            out.alpha_composite(_wipe(fl.block, (0, FW), k))
-        k = _prog(t, a + 0.20, a + 0.38)
+        ko = gone(o_lines, o_lines + FRAME_SHADE_OUT)
+        if k > 0 and ko < 1:
+            blk = _wipe(fl.block, (0, FW), k)
+            out.alpha_composite(_unwipe(blk, (0, FW), ko) if ko > 0 else blk)
+        k = _prog(t, a + 0.20, a + 0.38) * (1 - gone(to, to + 0.25))
         if k > 0:
             out.alpha_composite(_alpha(_shift(fl.label, round(40 * (1 - k))), k))
     if fl.chev is not None:  # flèches: fade + jaya men l imin
-        k = _prog(t, a, a + 0.30)
+        k = _prog(t, a, a + 0.30) * (1 - gone(to, to + 0.25))
         if k > 0:
             out.alpha_composite(_alpha(_shift(fl.chev, round(50 * (1 - k))), k))
     for i, (lay, span) in enumerate(fl.lines):
         s0 = FRAME_LINE_DELAY + i * FRAME_LINE_STEP
         k = _prog(t, s0, s0 + FRAME_LINE_DUR)
-        if k > 0:
-            out.alpha_composite(_wipe(lay, span, k))
+        if k <= 0:
+            continue
+        lay = _wipe(lay, span, k)
+        if to is not None:
+            e0 = to + i * FRAME_OUT_STEP
+            ko = _prog(t, e0, e0 + FRAME_OUT_DUR)
+            if ko >= 1:
+                continue
+            if ko > 0:
+                lay = _unwipe(lay, span, ko)
+        out.alpha_composite(lay)
     return out
 
 
@@ -672,6 +723,8 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
             full = not framed(p) and fill  # 9:16 / 4:5 (crop): l video 3amra l cadre
             box = (0, 0, FW, FH) if full else video_box(p)
             fl = frame_layers(box, title or None, category, full)
+            if full and fl.lines:  # titre fo9 l video: kaykhrej b animation b7al version zoom
+                fl.t_out = title_out(p.duration)
             fl.base.save(work / "frame.png")
             inputs = ["-i", str(work / "frame.png")]  # tswira wa7da l video kamla
             if fl.lines:  # titre b animation (dkhla), l frame lakhra katb9a
