@@ -422,7 +422,7 @@ def _gradient(y0: int, y1: int, a0: int, a1: int) -> Image.Image:
     return lay
 
 
-FULL_BOTTOM = TEXT_MAX_Y  # full: akhir satr d titre (fo9 caption d Instagram)
+FULL_TOP = round(768 * FH / 1280)  # full: titre f nefs blasat l panel d version zoom (768/1280 d l exemple)
 
 
 def frame_layers(box: tuple[int, int, int, int], title: str | None, category: str | None,
@@ -461,8 +461,8 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
         fnt, lines = _fit_title(title, FONT_TITLE, TEXT_R - TEXT_L, ((3, 70, 58), (4, 58, 46)))
         lh = round(fnt.size * 1.32)
         if full:  # block l t7t (fo9 caption d Instagram)
-            bottom = FH - 200
-            top = bottom - max(96 + lh * len(lines) + 70, 380)
+            top = FULL_TOP
+            bottom = top + max(96 + lh * len(lines) + 70, 380)
         y_text = top + 96
         if not full:
             bottom = min(FH - 200, max(y_text + lh * len(lines) + 70, top + 380))
@@ -485,7 +485,7 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
 
     right = TEXT_R - 70  # l imin: flèches dahbiyin 9bel titre
     y = top + 64
-    room = TEXT_MAX_Y - y if not full else 560
+    room = TEXT_MAX_Y - (FULL_TOP if full else y)
     for steps in (((2, 84, 70), (3, 74, 60)), ((3, 60, 50), (4, 52, 44))):
         fnt, lines = _fit_title(title, FONT_TITLE, right - TEXT_L, steps)
         lh = round(fnt.size * 1.42)
@@ -493,7 +493,7 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
             break
     asc, desc = fnt.getmetrics()
     if full:  # titre l t7t, w dégradé navy ta7to bach yban 3la ay video
-        y = FULL_BOTTOM - lh * len(lines)
+        y = FULL_TOP
         fl.base.alpha_composite(_gradient(y - 300, FH, 0, 215))
         fl.top = y - 20
     fl.chev = _layer()
