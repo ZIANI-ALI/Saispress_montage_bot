@@ -997,6 +997,154 @@ def render_source_frames(st: SourceTab, fps: float, folder: Path) -> int:
     return n
 
 
+# ───────────────────────── outro (end card) ─────────────────────────
+# B7al l pages l kbar d l akhbar (AJ+, Brut…): l video kat7bes f akhir frame w bandat mayliin (dahbi, navy)
+# kaygttiwha men l imin; mn ba3d l logo b animation dyalo, khatt dahbi, «تابعونا لكل جديد», l site w icons d l réseaux.
+
+OUTRO = os.environ.get("OUTRO", "1") != "0"
+OUTRO_SECONDS = 2.8
+OUTRO_TAG = "تابعونا لكل جديد"
+OUTRO_SITE = os.environ.get("OUTRO_SITE", "saispress.com")
+OUTRO_LOGO_T0 = 0.38          # l logo kaybda (b nefs animation d l header)
+OUTRO_ANIM_END = 2.25         # akhir 7araka (icons); ba9i l outro tabet
+NAVY_DEEP = (8, 16, 40)
+
+
+@dataclass
+class OutroLayers:
+    W: int
+    H: int
+    bg: Image.Image          # navy b daw f l wost
+    logo: Image.Image
+    logo_xy: tuple
+    line_y: int
+    tag: Image.Image         # ktaba (layer kamel)
+    tag_span: tuple
+    site: Image.Image        # pill d l site (crop) + blasto
+    site_xy: tuple
+    icons: list              # [(Image, (x, y))]
+
+
+def outro_layers(W: int, H: int) -> OutroLayers:
+    s = W / 1080
+    bg = Image.new("RGBA", (W, H), (*NAVY_DEEP, 255))
+    glow = Image.new("L", (W // 8, H // 8), 0)
+    gw, gh = glow.size
+    ImageDraw.Draw(glow).ellipse((gw * 0.05, gh * 0.22, gw * 0.95, gh * 0.62), fill=150)
+    glow = glow.filter(ImageFilter.GaussianBlur(gw * 0.12)).resize((W, H), Image.BICUBIC)
+    bg.paste(Image.new("RGBA", (W, H), (*NAVY, 255)), (0, 0), glow)
+
+    lg = Image.open(ASSETS / "logo.png").convert("RGBA")
+    lw = round(400 * s)
+    lg = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
+    cy = round(H * 0.40)
+    logo_xy = ((W - lw) // 2, cy - lg.height // 2 - round(40 * s))
+    line_y = logo_xy[1] + lg.height + round(50 * s)
+
+    tf = _font(FONT_TITLE, round(62 * s))
+    tag = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ty = line_y + round(42 * s)
+    ImageDraw.Draw(tag).text((W / 2, ty), OUTRO_TAG, font=tf, fill=WHITE, anchor="ma", direction="rtl")
+    tw = _width(OUTRO_TAG, tf)
+    tag = _soft_shadow_any(tag)
+
+    sf = _font(FONT_PILL, round(40 * s))
+    sw = math.ceil(sf.getlength(OUTRO_SITE))
+    ph, padx = round(76 * s), round(36 * s)
+    site = Image.new("RGBA", (sw + 2 * padx, ph), (0, 0, 0, 0))
+    d = ImageDraw.Draw(site)
+    d.rounded_rectangle((0, 0, site.width - 1, ph - 1), radius=ph // 2, fill=(*NAVY, 255), outline=(*GOLD, 255),
+                        width=max(2, round(3 * s)))
+    d.text((site.width / 2, ph / 2 + round(2 * s)), OUTRO_SITE, font=sf, fill=WHITE, anchor="mm")
+    site_xy = ((W - site.width) // 2, ty + round(110 * s))
+
+    ic, gap = round(54 * s), round(34 * s)
+    names = ("Instagram", "Facebook", "TikTok", "YouTube", "X")
+    total = len(names) * ic + (len(names) - 1) * gap
+    iy = site_xy[1] + ph + round(70 * s)
+    icons = [(_icon(n, ic, (*GOLD, 255)), ((W - total) // 2 + i * (ic + gap), iy)) for i, n in enumerate(names)]
+    return OutroLayers(W, H, bg, lg, logo_xy, line_y, tag, ((W - tw) / 2 - 4, (W + tw) / 2 + 4), site, site_xy,
+                       icons)
+
+
+def _soft_shadow_any(lay: Image.Image, blur: int = 6, dy: int = 3, k: float = 0.55) -> Image.Image:
+    sh = Image.new("RGBA", lay.size, (0, 0, 0, 0))
+    sh.putalpha(lay.getchannel("A").filter(ImageFilter.GaussianBlur(blur)).point(lambda v: int(v * k)))
+    out = Image.new("RGBA", lay.size, (0, 0, 0, 0))
+    out.paste(sh, (0, dy))
+    out.alpha_composite(lay)
+    return out
+
+
+def render_outro(o: OutroLayers, t: float) -> Image.Image:
+    W, H = o.W, o.H
+    s = W / 1080
+    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    # 1) bandat kaydkhlo men l imin (dahbi, navy, mn ba3d l fond) w kaygttiw l video
+    sl = H * 0.18
+    span = W + 2 * sl
+    for i, col in enumerate(((*GOLD, 255), (*NAVY, 255), None)):
+        k = _ease_io((t - i * 0.08) / 0.45)
+        if k <= 0:
+            continue
+        edge = W + sl - span * k  # l 7afa l issar (f l wost d l 3lou)
+        m = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(m).polygon([(edge + sl, 0), (W * 3, 0), (W * 3, H), (edge - sl, H)], fill=255)
+        lay = o.bg.copy() if col is None else Image.new("RGBA", (W, H), col)
+        lay.putalpha(m)
+        out.alpha_composite(lay)
+    if t < 0.4:
+        return out
+    # 2) logo (nefs animation d l header, kbir)
+    lx, ly = o.logo_xy
+    out.alpha_composite(logo_at(o.logo, t - OUTRO_LOGO_T0),
+                        (lx - round(o.logo.width * LOGO_PAD), ly - round(o.logo.height * LOGO_PAD)))
+    # 3) khatt dahbi kaytfta7 men l wost
+    k = _ease_expo((t - 1.05) / 0.5)
+    if k > 0:
+        half = round(210 * s * k)
+        ImageDraw.Draw(out).rounded_rectangle((W // 2 - half, o.line_y, W // 2 + half, o.line_y + round(5 * s)),
+                                              radius=round(3 * s), fill=(*GOLD, 255))
+    # 4) «تابعونا لكل جديد»: katkchef men l imin + tl3a sghira
+    k = _prog(t, 1.15, 1.6)
+    if k > 0:
+        tag = _wipe_any(o.tag, o.tag_span, k)
+        out.alpha_composite(tag, (0, round(18 * s * (1 - k))))
+    # 5) l site (pop)
+    k = (t - 1.35) / 0.4
+    if k > 0:
+        sc = _back(k)
+        sw, sh = o.site.size
+        nw, nh = max(1, round(sw * sc)), max(1, round(sh * sc))
+        out.alpha_composite(_alpha(o.site.resize((nw, nh), Image.LANCZOS), min(1.0, k * 3)),
+                            (o.site_xy[0] + (sw - nw) // 2, o.site_xy[1] + (sh - nh) // 2))
+    # 6) icons wa7d b wa7d
+    for i, (im, (x, y)) in enumerate(o.icons):
+        k = (t - 1.55 - i * 0.07) / 0.35
+        if k <= 0:
+            continue
+        dy = round(30 * s * (1 - _ease(k)))
+        out.alpha_composite(_alpha(im, min(1.0, k * 2.5)), (x, y + dy))
+    return out
+
+
+def _wipe_any(lay: Image.Image, span: tuple[float, float], k: float) -> Image.Image:
+    left, right = span
+    edge = right - (right - left) * k
+    m = _row_mask(lay.size, [(max(0, int(edge)), lay.width, 1.0)])
+    out = lay.copy()
+    out.putalpha(ImageChops.multiply(lay.getchannel("A"), m))
+    return out
+
+
+def render_outro_frames(W: int, H: int, fps: float, folder: Path) -> int:
+    o = outro_layers(W, H)
+    n = math.ceil(OUTRO_ANIM_END * fps) + 1  # mor had l w9t kolchi tabet (eof_action=repeat)
+    for i in range(n):
+        render_outro(o, i / fps).save(folder / f"o{i:05d}.png", compress_level=1)
+    return n
+
+
 # ───────────────────────── ffmpeg ─────────────────────────
 
 def _even(x: float) -> int:
@@ -1093,15 +1241,28 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
             st = source_tab(source[0], name, *((FW, FH) if frame else (W, H)), p.duration)
             render_source_frames(st, p.fps, work)
             graph = _add_overlay(graph, inputs, work / "s%05d.png", p.fps, st.x, st.y)
+        amap = "0:a:0?"
+        outro = OUTRO and p.duration > 0
+        if outro:  # l video kat7bes f akhir frame, l outro fo9ha; l son kaytfada w kaytzad silence
+            ow, oh = (FW, FH) if frame else (W, H)
+            render_outro_frames(ow, oh, p.fps, work)
+            n = 1 + inputs.count("-i")
+            inputs += ["-framerate", f"{p.fps:.5f}", "-itsoffset", f"{p.duration:.3f}", "-i", str(work / "o%05d.png")]
+            graph = (graph.removesuffix("[v]") + f"[x];[x]tpad=stop_mode=clone:stop_duration={OUTRO_SECONDS}[xp];"
+                     f"[xp][{n}:v]overlay=0:0:eof_action=repeat,format=yuv420p[v]")
+            if p.audio:
+                graph += (f";[0:a:0]afade=t=out:st={max(0.0, p.duration - 0.5):.3f}:d=0.5,"
+                          f"atrim=end={p.duration:.3f},apad=whole_dur={p.duration + OUTRO_SECONDS:.3f}[a]")
+                amap = "[a]"
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1",
                "-i", str(src), *inputs,
                "-filter_complex", graph,
-               "-map", "[v]", "-map", "0:a:0?",
+               "-map", "[v]", "-map", amap,
                "-c:v", "libx264", "-preset", PRESET, "-crf", CRF, "-profile:v", "high",
                "-pix_fmt", "yuv420p",
                "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
                "-fps_mode", "passthrough", "-shortest"]
-        if p.audio in COPY_AUDIO:
+        if p.audio in COPY_AUDIO and not outro:
             cmd += ["-c:a", "copy"]
         elif p.audio:
             cmd += ["-c:a", "aac", "-b:a", "256k"]

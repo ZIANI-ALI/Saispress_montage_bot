@@ -45,6 +45,9 @@ b animation, **b nefs l qualité**.
 - **Animation d l logo (~1.4 s, f ga3 l versions):** l 7rf kaytktb men l imin l l issar (7afa mayla rtba b daw dahbi)
   m3a zoom kayrtta7 (1.12 → 1), mn ba3d mrab3at PRESS kaytl3o wa7d b wa7d (pop), w f l akhir lam3a r9i9a 3la l 7rf.
   F frame: l cadre d `#rkn` kaytfta7 men l issar, «#» kaybrez, w l ktaba katkchef.
+- **Outro (~2.8 s, f ga3 l versions):** l video kat7bes f akhir frame, bandat mayliin (dahbi, navy) kaygttiwha men
+  l imin, mn ba3d l logo b animation dyalo, khatt dahbi, «تابعونا لكل جديد», `saispress.com` w icons d l réseaux.
+  L son kaytfada f akhir l video. `OUTRO=0` bach t7iydo, `OUTRO_SITE` bach tbddel l site.
 - **Titre f frame:** shadow sghir mora l ktaba bo7dha (machi dégradé).
 - **Titre:** panel navy + khatt gold + pill d l rkn.
   - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.
