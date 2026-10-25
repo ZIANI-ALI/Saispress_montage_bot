@@ -368,6 +368,54 @@ def render_overlay_frames(ov: Overlay, fps: float, folder: Path) -> int:
     return n
 
 
+def _back(x: float) -> float:
+    """Ease out back: kaytjawez chwiya w yrje3 (pop)."""
+    x = min(1.0, max(0.0, x))
+    c1 = 1.70158
+    return 1 + (c1 + 1) * (x - 1) ** 3 + c1 * (x - 1) ** 2
+
+
+LOGO_IN = (0.05, 0.55)      # logo: kaykber men 55% b pop w fade
+LOGO_SHINE = (0.65, 1.15)   # mn ba3d lam3a dahbiya katdouz 3lih (men l issar l l imin)
+LOGO_PAD = 0.08             # blasa l pop (scale > 1)
+
+
+def logo_at(lg: Image.Image, t: float) -> Image.Image:
+    """Logo f l w9t t, f canvas fih LOGO_PAD men kol jiha (l centre tabet)."""
+    w, h = lg.size
+    px, py = round(w * LOGO_PAD), round(h * LOGO_PAD)
+    out = Image.new("RGBA", (w + 2 * px, h + 2 * py), (0, 0, 0, 0))
+    k = (t - LOGO_IN[0]) / (LOGO_IN[1] - LOGO_IN[0])
+    if k <= 0:
+        return out
+    sc = 0.55 + 0.45 * _back(k)
+    nw, nh = max(1, round(w * sc)), max(1, round(h * sc))
+    img = lg.resize((nw, nh), Image.LANCZOS) if (nw, nh) != (w, h) else lg.copy()
+    img = _alpha(img, _ease(k * 1.8))
+    ks = (t - LOGO_SHINE[0]) / (LOGO_SHINE[1] - LOGO_SHINE[0])
+    if 0 < ks < 1:
+        bw = nw * 0.22
+        cx = -bw + (nw + 2 * bw) * _ease(ks)
+        band = Image.new("L", (nw, nh), 0)
+        sl = nh * 0.45  # mayla
+        ImageDraw.Draw(band).polygon([(cx - bw / 2 + sl, 0), (cx + bw / 2 + sl, 0), (cx + bw / 2 - sl, nh),
+                                      (cx - bw / 2 - sl, nh)], fill=235)
+        band = band.filter(ImageFilter.GaussianBlur(max(1, bw / 5)))
+        shine = Image.new("RGBA", (nw, nh), (*GOLD, 0))
+        shine.putalpha(ImageChops.multiply(band, img.getchannel("A")))
+        img.alpha_composite(shine)
+    out.alpha_composite(img, (px + (w - nw) // 2, py + (h - nh) // 2))
+    return out
+
+
+def render_logo_frames(lg: Image.Image, fps: float, folder: Path) -> int:
+    """PNG d l logo (dkhla + lam3a); l frame lakhra katb9a (overlay kay3awedha)."""
+    n = math.ceil(LOGO_SHINE[1] * fps) + 2
+    for i in range(n):
+        logo_at(lg, i / fps).save(folder / f"l{i:05d}.png", compress_level=1)
+    return n
+
+
 def logo_image(W: int) -> tuple[Image.Image, int, int]:
     s = W / 720
     lg = Image.open(ASSETS / "logo.png").convert("RGBA")
@@ -428,6 +476,8 @@ class FrameLayers:
     lines: list                     # [(Image d satr + khatt dahbi, (left, right))]
     top: int                        # awal y fih chi 3onsor d titre (l crop d l animation)
     t_out: float | None = None      # full: waqt khrja d titre (None: kayb9a 7tta l akhir)
+    logo: tuple | None = None       # (Image, (x, y)) d l logo f l header
+    tag: tuple | None = None        # (box, sq, text, (x0, x1), (sq_x0, sq_y0, sq_x1, sq_y1)): #rkn
 
 
 def _layer() -> Image.Image:
@@ -452,7 +502,7 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     """full: video 9:16 3amra l cadre (bla fond mdbbel); header (b dégradé navy) w titre (bla shadow) fo9ha."""
     vx, vy, vw, vh = box
     urgent = urgent_cat(category)
-    if full:  # dégradé navy ghir fo9 (header); titre bla shadow
+    if full:  # dégradé navy ghir fo9 (header); titre b shadow sghir mora l ktaba (_soft_shadow)
         im = _gradient(0, 560, 170, 0)
     else:
         im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
@@ -463,7 +513,7 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     lg = Image.open(ASSETS / "logo.png").convert("RGBA")
     lw = 150  # nefs 7ajm d l logo f version zoom (logo_image: 100 * 1080/720)
     lg = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
-    im.alpha_composite(lg, (FW - 60 - lw, 291 - lg.height // 2))  # f nefs l khatt m3a #rkn
+    logo = (lg, (FW - 60 - lw, 291 - lg.height // 2))  # f nefs l khatt m3a #rkn (b animation: render_header)
     tag_f = _font(FONT_PILL, 40)
     tag = f"{category}" if category else "Saispress"
     tw = _width(tag, tag_f)
@@ -471,12 +521,17 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     sq = ph - 12
     x0, y0 = 60, 258
     x1 = x0 + 24 + tw + 18 + sq + 6
-    d.rounded_rectangle((x0, y0, x1, y0 + ph), radius=14, fill=(*NAVY, 235), outline=(*GOLD, 255), width=3)
-    d.rounded_rectangle((x1 - 6 - sq, y0 + 6, x1 - 6, y0 + 6 + sq), radius=10, fill=(*(RED if urgent else GOLD), 255))
+    box_l, sq_l, txt_l = _layer(), _layer(), _layer()
+    ImageDraw.Draw(box_l).rounded_rectangle((x0, y0, x1, y0 + ph), radius=14, fill=(*NAVY, 235),
+                                            outline=(*GOLD, 255), width=3)
+    d = ImageDraw.Draw(sq_l)
+    sqb = (round(x1 - 6 - sq), y0 + 6, round(x1 - 6), y0 + 6 + sq)
+    d.rounded_rectangle(sqb, radius=10, fill=(*(RED if urgent else GOLD), 255))
     d.text((x1 - 6 - sq / 2, y0 + ph / 2 + 2), "#", font=_font(FONT_TITLE, 44), fill=WHITE, anchor="mm")
-    d.text((x1 - 6 - sq - 18, y0 + ph / 2 + 3), tag, font=tag_f, fill=WHITE, anchor="rm", direction="rtl")
+    ImageDraw.Draw(txt_l).text((x1 - 6 - sq - 18, y0 + ph / 2 + 3), tag, font=tag_f, fill=WHITE, anchor="rm",
+                               direction="rtl")
     top = vy + vh
-    fl = FrameLayers(im, None, None, None, [], top)
+    fl = FrameLayers(im, None, None, None, [], top, logo=logo, tag=(box_l, sq_l, txt_l, (x0, x1), sqb))
     if not title:
         return fl
     if urgent:  # b7al l akhbar 3ajila: block 7mer ta7t l video, label «عاجل», titre byed
@@ -530,8 +585,65 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
         left = right - _width(ln, fnt)
         d.rectangle((left, uy, right, uy + 5), fill=(*GOLD, 255))
         d.ellipse((right - 4, uy - 4, right + 10, uy + 9), fill=(*GOLD, 255))
-        fl.lines.append((lay, (left - 4, right + 12)))
+        fl.lines.append((_soft_shadow(lay), (left - 4, right + 12)))
     return fl
+
+
+def _soft_shadow(lay: Image.Image, blur: int = 5, dy: int = 3, k: float = 0.6) -> Image.Image:
+    """Shadow sghir mora l ktaba bo7dha (machi dégradé): nefs l forma, mdbbla, ta7t b dy."""
+    bb = lay.getbbox()
+    if not bb:
+        return lay
+    m = 4 * blur
+    x0, y0, x1, y1 = max(0, bb[0] - m), max(0, bb[1] - m), min(FW, bb[2] + m), min(FH - dy, bb[3] + m)
+    a = lay.crop((x0, y0, x1, y1)).getchannel("A").filter(ImageFilter.GaussianBlur(blur)).point(lambda v: int(v * k))
+    sh = Image.new("RGBA", (x1 - x0, y1 - y0), (0, 0, 0, 0))
+    sh.putalpha(a)
+    out = _layer()
+    out.paste(sh, (x0, y0 + dy))
+    out.alpha_composite(lay)
+    return out
+
+
+HDR_Y0, HDR_Y1 = 200, 400   # l header (logo + #rkn) f had l bande
+HDR_END = max(LOGO_SHINE[1], 0.85)
+
+
+def render_header(fl: FrameLayers, t: float) -> Image.Image:
+    """Logo (pop + lam3a) w #rkn: l cadre kaytfta7 men l issar, «#» kaybrez, l ktaba katkchef men l imin."""
+    out = _layer()
+    if fl.tag:
+        box, sq, txt, (x0, x1), (sx0, sy0, sx1, sy1) = fl.tag
+        k = _prog(t, 0.12, 0.42)
+        if k > 0:
+            m = Image.new("L", (FW, FH), 0)
+            ImageDraw.Draw(m).rectangle((0, 0, round(x0 + (x1 - x0) * k), FH), fill=255)
+            b = _alpha(box, min(1.0, k * 2))
+            b.putalpha(ImageChops.multiply(b.getchannel("A"), m))
+            out.alpha_composite(b)
+        k = (t - 0.32) / 0.28
+        if k > 0:
+            sc = _back(k)
+            w, h = sx1 - sx0, sy1 - sy0
+            nw, nh = max(1, round(w * sc)), max(1, round(h * sc))
+            piece = sq.crop((sx0, sy0, sx1, sy1)).resize((nw, nh), Image.LANCZOS)
+            out.alpha_composite(_alpha(piece, min(1.0, k * 3)), (sx0 + (w - nw) // 2, sy0 + (h - nh) // 2))
+        k = _prog(t, 0.45, 0.85)
+        if k > 0:
+            bb = txt.getbbox()
+            if bb:
+                out.alpha_composite(_wipe(txt, (bb[0], bb[2]), k))
+    if fl.logo:
+        lg, (lx, ly) = fl.logo
+        out.alpha_composite(logo_at(lg, t), (lx - round(lg.width * LOGO_PAD), ly - round(lg.height * LOGO_PAD)))
+    return out
+
+
+def render_header_frames(fl: FrameLayers, fps: float, folder: Path) -> int:
+    n = math.ceil(HDR_END * fps) + 2
+    for i in range(n):
+        render_header(fl, i / fps).crop((0, HDR_Y0, FW, HDR_Y1)).save(folder / f"h{i:05d}.png", compress_level=1)
+    return n
 
 
 def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: str | None,
@@ -540,6 +652,7 @@ def frame_overlay(box: tuple[int, int, int, int], title: str | None, category: s
     title None: ghir logo w #rkn."""
     fl = frame_layers(box, title, category, full)
     im = fl.base.copy()
+    im.alpha_composite(render_header(fl, HDR_END))
     for lay in (fl.block, fl.label, fl.chev, *(ln for ln, _ in fl.lines)):
         if lay is not None:
             im.alpha_composite(lay)
@@ -728,7 +841,7 @@ class SourceTab:
 
 
 def source_tab(platform: str, name: str, W: int, H: int, duration: float) -> SourceTab:
-    """[icon | smiya] 3amoudi f jnab l issar (kayt9ra men l fo9 l l t7t), ktaba byda b shadow, bla fond."""
+    """[smiya | icon] dawr 90° (b7al Hespress): icon l fo9, ktaba kat9ra men l t7t l l fo9, byda b shadow."""
     s = W / 1080
     fnt = _font(FONT_PILL, round(34 * s))
     ic, gap, sep = round(30 * s), round(12 * s), max(2, round(3 * s))
@@ -739,12 +852,11 @@ def source_tab(platform: str, name: str, W: int, H: int, duration: float) -> Sou
     L = ic + gap + sep + gap + tw
     cy = m + h / 2
     fg = Image.new("RGBA", (L + 2 * m, h + 2 * m), (0, 0, 0, 0))
-    fg.alpha_composite(_icon(platform, ic, (*WHITE, 255)).rotate(90), (m, round(cy - ic / 2)))  # icon wa9ef
+    fg.alpha_composite(_icon(platform, ic, (*WHITE, 255)).rotate(-90), (m + L - ic, round(cy - ic / 2)))  # wa9ef
     d = ImageDraw.Draw(fg)
-    sx = m + ic + gap
+    sx = m + tw + gap
     d.rectangle((sx, round(cy - ic * 0.5), sx + sep - 1, round(cy + ic * 0.5)), fill=(*GOLD, 255))
-    d.text((sx + sep + gap, cy + round(2 * s)), name, font=fnt, fill=WHITE, anchor="lm",
-           direction="rtl" if rtl else "ltr")
+    d.text((m, cy + round(2 * s)), name, font=fnt, fill=WHITE, anchor="lm", direction="rtl" if rtl else "ltr")
     sh = Image.new("RGBA", fg.size, (0, 0, 0, 0))
     sh.putalpha(fg.getchannel("A").filter(ImageFilter.GaussianBlur(round(4 * s))).point(lambda v: min(255, v * 2) * 0.55))
     content = Image.alpha_composite(sh, fg)
@@ -755,7 +867,8 @@ def source_tab(platform: str, name: str, W: int, H: int, duration: float) -> Sou
 
 
 def _source_frame(st: SourceTab, t: float) -> Image.Image:
-    """Dkhla: khatt dahbi kaykber men l wost, mn ba3d kaymsa7 men l fo9 l l t7t w l ktaba katban mn ta7to.
+    """(Ofo9i: l icon f l imin = l fo9 mor dawra.) Dkhla: khatt dahbi kaykber men l wost, mn ba3d kaymsa7 men
+    l fo9 l l t7t w l ktaba katban mn ta7to.
     Khrja: l khatt kayrje3 ygtti l ktaba men l t7t l l fo9, w kaytsaghar l l wost."""
     w, hh = st.content.size
     a0, L = st.x0, st.length
@@ -768,20 +881,20 @@ def _source_frame(st: SourceTab, t: float) -> Image.Image:
         k2 = 1 - _prog(t, to, to + SRC_BACK)
         k1 = 1 - _prog(t, to + SRC_BACK, to + SRC_BACK + SRC_SHRINK)
     out = Image.new("RGBA", (w, hh), (0, 0, 0, 0))
-    e = a0 + L * k2                       # l ktaba katban 9bel e
+    e = a0 + L * (1 - k2)                 # l ktaba katban mn e l l imin (l fo9)
     if k2 > 0:
         m = Image.new("L", (w, hh), 0)
-        ImageDraw.Draw(m).rectangle((0, 0, round(e), hh), fill=255)
+        ImageDraw.Draw(m).rectangle((round(e), 0, w, hh), fill=255)
         c_img = st.content.copy()
         c_img.putalpha(ImageChops.multiply(c_img.getchannel("A"), m))
         out.alpha_composite(c_img)
     if k1 > 0 and k2 < 1:
-        x0, x1 = (c - (c - a0) * k1, c + (a0 + L - c) * k1) if k2 <= 0 else (e, a0 + L)
+        x0, x1 = (c - (c - a0) * k1, c + (a0 + L - c) * k1) if k2 <= 0 else (a0, e)
         y0, y1 = st.bar
         if x1 - x0 >= 1:
             ImageDraw.Draw(out).rounded_rectangle((x0, y0, x1, y1), radius=min((y1 - y0) / 2, (x1 - x0) / 2),
                                                   fill=(*GOLD, 255))
-    return out.rotate(-90, expand=True)   # ofo9i → 3amoudi (l icon l fo9)
+    return out.rotate(90, expand=True)    # ofo9i → 3amoudi (l icon l fo9)
 
 
 def render_source_frames(st: SourceTab, fps: float, folder: Path) -> int:
@@ -813,6 +926,14 @@ def out_size(p: Probe, frame: bool | None = None) -> tuple[int, int, bool]:
 def tonemap_available() -> bool:
     out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True).stdout
     return " zscale " in out and " tonemap " in out
+
+
+def _add_overlay(graph: str, inputs: list, pattern: Path, fps: float, x: int, y: int) -> str:
+    """Kanzidou sequence PNG (input jdid) fo9 [v]; l frame lakhra katb9a."""
+    n = 1 + inputs.count("-i")
+    inputs += ["-framerate", f"{fps:.5f}", "-i", str(pattern)]
+    return (graph.removesuffix("[v]") + f"[o{n}];[o{n}][{n}:v]overlay={x}:{y}:eof_action=repeat,"
+            "format=yuv420p[v]")
 
 
 def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay | None) -> str:
@@ -863,11 +984,14 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
                 render_frame_title_frames(fl, p.fps, work)
                 inputs += ["-framerate", f"{p.fps:.5f}", "-i", str(work / "t%05d.png")]
             graph = build_filter_framed(p, box, fl.top if fl.lines else None)
+            render_header_frames(fl, p.fps, work)  # logo + #rkn b animation
+            graph = _add_overlay(graph, inputs, work / "h%05d.png", p.fps, 0, HDR_Y0)
         else:
             ov = build_overlay(W, H, title, category, p.duration) if title else None
             lg, lx, ly = logo_image(W)
-            lg.save(work / "logo.png")
-            inputs = ["-i", str(work / "logo.png")]  # tswira wa7da: overlay kay3awedha 7tta l akhir
+            render_logo_frames(lg, p.fps, work)  # logo b animation, l frame lakhra katb9a
+            lx, ly = lx - round(lg.width * LOGO_PAD), ly - round(lg.height * LOGO_PAD)
+            inputs = ["-framerate", f"{p.fps:.5f}", "-i", str(work / "l%05d.png")]
             if ov:
                 render_overlay_frames(ov, p.fps, work)
                 inputs += ["-framerate", f"{p.fps:.5f}", "-i", str(work / "f%05d.png")]
@@ -876,10 +1000,7 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
         if name:  # tab d source fo9 kolchi
             st = source_tab(source[0], name, *((FW, FH) if frame else (W, H)), p.duration)
             render_source_frames(st, p.fps, work)
-            n = 1 + inputs.count("-i")
-            inputs += ["-framerate", f"{p.fps:.5f}", "-i", str(work / "s%05d.png")]
-            graph = (graph.removesuffix("[v]") + f"[v0];[v0][{n}:v]overlay={st.x}:{st.y}:eof_action=repeat,"
-                     "format=yuv420p[v]")
+            graph = _add_overlay(graph, inputs, work / "s%05d.png", p.fps, st.x, st.y)
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1",
                "-i", str(src), *inputs,
                "-filter_complex", graph,

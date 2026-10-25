@@ -35,13 +35,16 @@ b animation, **b nefs l qualité**.
   - Titre kaydkhel b animation (flèches, mn ba3d stoura kaytkchfo men l imin, ~1.2 s) w kayb9a l video kamla
     (Reels kayakhod cover mn l frame).
 - **Ghir logo:** nefs l frame (logo + `#rkn`) bla titre. Video 9:16: bla panel.
-- **Video 9:16 / 4:5:** jouj versions: 🖼 frame 9bel (video full 9:16, logo + `#rkn` l fo9 b dégradé navy, titre l t7t b animation, bla shadow) w mn ba3d 📱 l 9dima (zoom, panel b animation),
+- **Video 9:16 / 4:5:** jouj versions: 🖼 frame 9bel (video full 9:16, logo + `#rkn` l fo9 b dégradé navy, titre l t7t b animation, shadow sghir mora l ktaba) w mn ba3d 📱 l 9dima (zoom, panel b animation),
   kol wa7da b cover dyalha. Video 4:5 / 3:4 (machi 9:16): l bot kaysowl mor tanzil: ✂️ Crop (full) wla
   🖼 B cadre (video f l wost b fond mdbbel, b7al 16:9).
 - **Logo:** l fo9 3la l imin, l video kamla.
-- **Source (ikhtiyari):** sghira f jnab l issar (~35% men l fo9, b7al l medias): icon d l platform | smiyt l page wla
-  «متداول», ktaba byda 3amoudiya b shadow (bla fond). Dkhla: khatt dahbi kaykber w kaymsa7 w l ktaba katban mn ta7to;
-  khrja b l39s mor `SOURCE_SECONDS` (6 s), wla 9bel l akhir ila l video 9sira.
+- **Source (ikhtiyari):** sghira f jnab l issar (~35% men l fo9, b7al l medias): icon d l platform l fo9 | smiyt l page
+  wla «متداول», ktaba byda 3amoudiya (kat9ra men l t7t l l fo9) b shadow, bla fond. Dkhla: khatt dahbi kaykber w kaymsa7
+  w l ktaba katban mn ta7to; khrja b l39s mor `SOURCE_SECONDS` (6 s), wla 9bel l akhir ila l video 9sira.
+- **Animation d l logo:** kaydkhel b pop (kaykber w yrje3) w mn ba3d lam3a dahbiya katdouz 3lih (~1.1 s), f ga3 l versions.
+  F frame: l cadre d `#rkn` kaytfta7 men l issar, «#» kaybrez, w l ktaba katkchef.
+- **Titre f frame:** shadow sghir mora l ktaba bo7dha (machi dégradé).
 - **Titre:** panel navy + khatt gold + pill d l rkn.
   - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.
   - Kaybqa `TITLE_SECONDS` (4.2s).
