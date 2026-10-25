@@ -1199,7 +1199,8 @@ def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay | 
 
 def montage(src: Path, dst: Path, title: str, category: str | None = None,
             progress: Callable[[float], None] | None = None, with_title: bool = True,
-            frame: bool | None = None, fill: bool = True, source: tuple[str, str] | None = None) -> Probe:
+            frame: bool | None = None, fill: bool = True, source: tuple[str, str] | None = None,
+            outro: bool = OUTRO) -> Probe:
     """source: (platform, smiyt l page wla «متداول») → tab f jnab l issar. with_title=False: ghir logo (w #rkn f frame). frame None: 3la 7sab l format (framed); True: frame 7tta
     l 9:16 (titre b animation); False: zoom 9:16 (panel). fill (frame d video machi 3rida): True = crop 7tta
     t3mer l cadre, False = f l wost b fond mdbbel (b7al 16:9)."""
@@ -1242,7 +1243,7 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
             render_source_frames(st, p.fps, work)
             graph = _add_overlay(graph, inputs, work / "s%05d.png", p.fps, st.x, st.y)
         amap = "0:a:0?"
-        outro = OUTRO and p.duration > 0
+        outro = outro and p.duration > 0
         if outro:  # l video kat7bes f akhir frame, l outro fo9ha; l son kaytfada w kaytzad silence
             ow, oh = (FW, FH) if frame else (W, H)
             render_outro_frames(ow, oh, p.fps, work)

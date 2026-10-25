@@ -50,7 +50,7 @@ HELP = (
     "Bot kaysowlek: <b>🏷 Ghir logo</b> wla <b>📰 Logo + titre</b>.\n"
     "Ila khtariti titre w ma ktebtich caption, ghansowlek 3la l 3onwan.\n"
     "Mn ba3d kaysowlek 3la <b>source</b>: platform (X, Instagram…) w smiyt l page wla «متداول» "
-    "(katban sghira f jnab l video).\n"
+    "(katban sghira f jnab l video), w 3la l <b>outro</b> f l akhir.\n"
     "Mn ba3d l montage: «✏️ Bddel titre» w «🔁» (ghir logo ⇄ logo + titre) bla ma t3awed tsifet l video.\n"
     "M3a l video katji <b>cover</b> (JPEG) l Reels.\n"
     "/cancel: tlghi kolchi: l montage li khddam, li f l queue, w l 3onwan li kantsenna."
@@ -73,6 +73,7 @@ class Job:
     cancelled: bool = False
     source: tuple[str, str] | None = None  # (platform, smiyt l page wla «متداول»)
     source_asked: bool = False
+    outro: bool | None = None   # None: mazal ma khtarch
 
 
 class Cancelled(Exception):
@@ -187,13 +188,20 @@ def platform_buttons(job_id: str) -> list:
     return [pl[:3], pl[3:]]
 
 
+OUTRO_CHOICE = "🎞 Nzid l outro f l akhir?"
+
+
 async def proceed(job: Job) -> None:
-    """Mor ikhtiyar titre: nsowlo 3la source (mra wa7da l kol video), mn ba3d l queue."""
-    if job.source_asked:
+    """Mor ikhtiyar titre: nsowlo 3la source, mn ba3d l outro (mra wa7da l kol video), mn ba3d l queue."""
+    if not job.source_asked:
+        job.source_asked = True
+        await say(job.chat_id, SRC_CHOICE, reply_to=job.msg_id, buttons=source_buttons(job.id))
+    elif job.outro is None:
+        await say(job.chat_id, OUTRO_CHOICE, reply_to=job.msg_id,
+                  buttons=[[{"text": "✅ Ah", "callback_data": f"oy:{job.id}"},
+                            {"text": "❌ La", "callback_data": f"on:{job.id}"}]])
+    else:
         await enqueue(job)
-        return
-    job.source_asked = True
-    await say(job.chat_id, SRC_CHOICE, reply_to=job.msg_id, buttons=source_buttons(job.id))
 
 
 async def ask_title(job: Job) -> None:
@@ -271,7 +279,7 @@ async def on_message(msg: dict) -> None:
             return
         job.source = (job.source[0], name)
         await say(chat_id, f"📹 Source: <b>{esc(job.source[0])} | {esc(name)}</b>")
-        await enqueue(job)
+        await proceed(job)
         return
 
     if text and chat_id in waiting_title:
@@ -323,7 +331,7 @@ async def on_callback(cb: dict) -> None:
             waiting_source.pop(chat_id, None)
             await api("editMessageText", chat_id=chat_id, message_id=mid, parse_mode="HTML",
                       text=f"{SRC_CHOICE}\n→ <b>❌ Bla source</b>")
-            await enqueue(job)
+            await proceed(job)
         elif data.startswith("sy:"):
             await api("editMessageText", chat_id=chat_id, message_id=mid, parse_mode="HTML",
                       text="📹 Mnin jat l video?", reply_markup={"inline_keyboard": platform_buttons(job.id)})
@@ -344,6 +352,17 @@ async def on_callback(cb: dict) -> None:
         await api("answerCallbackQuery", callback_query_id=cb["id"])
         await api("editMessageText", chat_id=chat_id, message_id=cb["message"]["message_id"], parse_mode="HTML",
                   text=f"📹 Source: <b>{esc(job.source[0])} | {TRENDING}</b>")
+        await proceed(job)
+        return
+    if data[:3] in ("oy:", "on:"):  # outro: ah / la
+        job = jobs.get(data[3:])
+        if not job or job.queued or job.outro is not None:
+            await api("answerCallbackQuery", callback_query_id=cb["id"], text="Deja khtariti.")
+            return
+        job.outro = data.startswith("oy:")
+        await api("answerCallbackQuery", callback_query_id=cb["id"])
+        await api("editMessageText", chat_id=chat_id, message_id=cb["message"]["message_id"], parse_mode="HTML",
+                  text=f"{OUTRO_CHOICE}\n→ <b>{'✅ Ah' if job.outro else '❌ La'}</b>")
         await enqueue(job)
         return
     if data[:3] in ("fc:", "fb:"):  # 4:5: crop wla cadre (mor tanzil)
@@ -485,7 +504,8 @@ async def process(client: TelegramClient, job: Job) -> None:
 
         t1 = time.time()
         p = await asyncio.to_thread(montage.montage, job.src, out, job.title, job.category, prog,
-                                    bool(job.with_title), frame, job.fill is not False, job.source)
+                                    bool(job.with_title), frame, job.fill is not False, job.source,
+                                    bool(job.outro))
         t_mt += time.time() - t1
 
         await edit(job.chat_id, status, f"⬆️ Kansifet l video{tag}…")
