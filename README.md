@@ -41,8 +41,9 @@ b animation, **b nefs l qualité**.
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Source (ikhtiyari):** sghira f jnab l issar (~35% men l fo9, b7al l medias): icon d l platform l fo9 | smiyt l page
   wla «متداول», ktaba byda 3amoudiya (kat9ra men l t7t l l fo9) b shadow, bla fond. Dkhla: khatt dahbi kaykber w kaymsa7
-  w l ktaba katban mn ta7to; khrja b l39s mor `SOURCE_SECONDS` (6 s), wla 9bel l akhir ila l video 9sira.
-- **Animation d l logo:** kaydkhel b pop (kaykber w yrje3) w mn ba3d lam3a dahbiya katdouz 3lih (~1.1 s), f ga3 l versions.
+  w l ktaba katban mn ta7to; katb9a kamla `SOURCE_SECONDS` (1 s) w katkhrej b l39s (~2.7 s f l kol).
+- **Animation d l logo (~1.4 s, f ga3 l versions):** l 7rf kaytktb men l imin l l issar (7afa mayla rtba b daw dahbi)
+  m3a zoom kayrtta7 (1.12 → 1), mn ba3d mrab3at PRESS kaytl3o wa7d b wa7d (pop), w f l akhir lam3a r9i9a 3la l 7rf.
   F frame: l cadre d `#rkn` kaytfta7 men l issar, «#» kaybrez, w l ktaba katkchef.
 - **Titre f frame:** shadow sghir mora l ktaba bo7dha (machi dégradé).
 - **Titre:** panel navy + khatt gold + pill d l rkn.

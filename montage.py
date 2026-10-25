@@ -375,42 +375,132 @@ def _back(x: float) -> float:
     return 1 + (c1 + 1) * (x - 1) ** 3 + c1 * (x - 1) ** 2
 
 
-LOGO_IN = (0.05, 0.55)      # logo: kaykber men 55% b pop w fade
-LOGO_SHINE = (0.65, 1.15)   # mn ba3d lam3a dahbiya katdouz 3lih (men l issar l l imin)
-LOGO_PAD = 0.08             # blasa l pop (scale > 1)
+# Animation d l logo (~1.4 s): l 7rf kaytktb men l imin l l issar (wipe mayl b 7afa rtba w daw dahbi f l 7afa)
+# m3a zoom kayrtta7 (1.12 → 1), mn ba3d PRESS: l mrab3at kaytl3o wa7d b wa7d (pop), w f l akhir lam3a r9i9a.
+LOGO_PAD = 0.08              # blasa l zoom (scale > 1)
+LOGO_WRITE = (0.08, 0.62)    # l 7rf kaytktb
+LOGO_SETTLE = (0.08, 0.85)   # zoom 1.12 → 1 (ease out expo)
+LOGO_BOX = (0.48, 0.06, 0.38)  # PRESS: bdya, bin mrab3a w mrab3a, modda
+LOGO_GLINT = (0.98, 1.38)    # lam3a men l issar l l imin
+LOGO_END = 1.40
+LOGO_TILT = 0.35             # mayl d l 7afa (dx/dy)
+
+
+def _ease_io(x: float) -> float:
+    x = min(1.0, max(0.0, x))
+    return 4 * x ** 3 if x < 0.5 else 1 - (-2 * x + 2) ** 3 / 2
+
+
+def _ease_expo(x: float) -> float:
+    x = min(1.0, max(0.0, x))
+    return 1.0 if x >= 1 else 1 - 2 ** (-10 * x)
+
+
+_logo_cache: dict = {}
+
+
+def _logo_parts(lg: Image.Image):
+    """(l 7rf bla PRESS, [(mrab3a, (x, y))]): l mrab3at dahbiyin d PRESS kanl9awhom b l loun."""
+    key = (lg.size, lg.tobytes()[:4096])
+    if key in _logo_cache:
+        return _logo_cache[key]
+    w, h = lg.size
+    px = lg.load()
+    gold = lambda c: c[3] > 160 and c[0] - c[2] > 70 and c[1] > 90  # noqa: E731
+    cols = [x for x in range(w) if any(gold(px[x, y]) for y in range(h // 2, h))]
+    runs, start = [], None
+    for x in range(w + 1):
+        on = x in cols if x < w else False
+        if on and start is None:
+            start = x
+        elif not on and start is not None:
+            if x - start >= 3:
+                runs.append((start, x))
+            start = None
+    mark = lg.copy()
+    boxes = []
+    for x0, x1 in runs:
+        ys = [y for y in range(h // 2, h) for x in range(x0, x1) if gold(px[x, y])]
+        y0, y1 = min(ys), max(ys) + 1
+        rect = (max(0, x0 - 1), max(0, y0 - 1), min(w, x1 + 1), min(h, y1 + 1))
+        boxes.append((lg.crop(rect), rect[:2]))
+        ImageDraw.Draw(mark).rectangle((rect[0], rect[1], rect[2] - 1, rect[3] - 1), fill=(0, 0, 0, 0))
+    _logo_cache[key] = (mark, boxes)
+    return mark, boxes
+
+
+def _edge_mask(size, edge: float, feather: float, peak: bool = False) -> Image.Image:
+    """Mask b 7afa mayla f x = edge (+ LOGO_TILT * y): 0 9bel, 255 mor (rtba f feather). peak: ghir l 7afa."""
+    w, h = size
+    f = max(2, round(feather))
+    pad = w + h + f
+    if peak:
+        vals = [0] * pad + [round(255 * math.sin(math.pi * i / f)) for i in range(f)] + [0] * (pad + w)
+    else:
+        vals = [0] * pad + [round(255 * i / f) for i in range(f)] + [255] * (pad + w)
+    ramp = Image.new("L", (len(vals), 1))
+    ramp.putdata(vals)
+    # input u = x - edge + LOGO_TILT * (y - h/2) + pad
+    return ramp.transform((w, h), Image.AFFINE, (1, LOGO_TILT, pad - edge - LOGO_TILT * h / 2, 0, 0, 0),
+                          resample=Image.BILINEAR)
 
 
 def logo_at(lg: Image.Image, t: float) -> Image.Image:
     """Logo f l w9t t, f canvas fih LOGO_PAD men kol jiha (l centre tabet)."""
     w, h = lg.size
-    px, py = round(w * LOGO_PAD), round(h * LOGO_PAD)
-    out = Image.new("RGBA", (w + 2 * px, h + 2 * py), (0, 0, 0, 0))
-    k = (t - LOGO_IN[0]) / (LOGO_IN[1] - LOGO_IN[0])
-    if k <= 0:
+    pw, ph = round(w * LOGO_PAD), round(h * LOGO_PAD)
+    out = Image.new("RGBA", (w + 2 * pw, h + 2 * ph), (0, 0, 0, 0))
+    if t <= LOGO_WRITE[0]:
         return out
-    sc = 0.55 + 0.45 * _back(k)
+    mark, boxes = _logo_parts(lg)
+    span = w + LOGO_TILT * h
+    feather = w * 0.22
+
+    # 1) l 7rf: kaytkchef men l imin l l issar (RTL), b daw dahbi f l 7afa
+    k = _ease_io((t - LOGO_WRITE[0]) / (LOGO_WRITE[1] - LOGO_WRITE[0]))
+    m = mark.copy()
+    if k < 1:
+        edge = w + LOGO_TILT * h / 2 - (span + feather) * k   # visible men l 7afa l l imin
+        a = m.getchannel("A")
+        m.putalpha(ImageChops.multiply(a, _edge_mask((w, h), edge - feather, feather)))
+        glow = Image.new("RGBA", (w, h), (*GOLD, 0))
+        g = ImageChops.multiply(a, _edge_mask((w, h), edge - feather * 0.6, feather * 0.9, peak=True))
+        glow.putalpha(g.point(lambda v: int(v * 0.95 * math.sin(math.pi * min(1.0, k * 1.15)))))
+        m.alpha_composite(glow)
+    # 3) lam3a r9i9a (men l issar l l imin) 3la l 7rf
+    kg = (t - LOGO_GLINT[0]) / (LOGO_GLINT[1] - LOGO_GLINT[0])
+    if 0 < kg < 1:
+        e = -w * 0.15 - LOGO_TILT * h / 2 + (span + w * 0.3) * _ease_io(kg)
+        g = ImageChops.multiply(m.getchannel("A"), _edge_mask((w, h), e, w * 0.12, peak=True))
+        glint = Image.new("RGBA", (w, h), (255, 236, 170, 0))
+        glint.putalpha(g.point(lambda v: int(v * 0.75)))
+        m.alpha_composite(glint)
+    # zoom kayrtta7
+    sc = 1.12 - 0.12 * _ease_expo((t - LOGO_SETTLE[0]) / (LOGO_SETTLE[1] - LOGO_SETTLE[0]))
+    layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    layer.alpha_composite(m)
+    # 2) PRESS: kol mrab3a katl3 men l t7t b pop
+    for i, (bx, (x, y)) in enumerate(boxes):
+        b0 = LOGO_BOX[0] + i * LOGO_BOX[1]
+        kb = (t - b0) / LOGO_BOX[2]
+        if kb <= 0:
+            continue
+        e = _back(kb)
+        bw_, bh_ = bx.size
+        sy = max(0.05, e)
+        nb = bx.resize((bw_, max(1, round(bh_ * sy))), Image.LANCZOS) if sy != 1 else bx
+        dy = round(bh_ * 0.6 * (1 - _ease(kb)))
+        layer.alpha_composite(_alpha(nb, min(1.0, kb * 2.5)), (x, y + bh_ - nb.height + dy))
     nw, nh = max(1, round(w * sc)), max(1, round(h * sc))
-    img = lg.resize((nw, nh), Image.LANCZOS) if (nw, nh) != (w, h) else lg.copy()
-    img = _alpha(img, _ease(k * 1.8))
-    ks = (t - LOGO_SHINE[0]) / (LOGO_SHINE[1] - LOGO_SHINE[0])
-    if 0 < ks < 1:
-        bw = nw * 0.22
-        cx = -bw + (nw + 2 * bw) * _ease(ks)
-        band = Image.new("L", (nw, nh), 0)
-        sl = nh * 0.45  # mayla
-        ImageDraw.Draw(band).polygon([(cx - bw / 2 + sl, 0), (cx + bw / 2 + sl, 0), (cx + bw / 2 - sl, nh),
-                                      (cx - bw / 2 - sl, nh)], fill=235)
-        band = band.filter(ImageFilter.GaussianBlur(max(1, bw / 5)))
-        shine = Image.new("RGBA", (nw, nh), (*GOLD, 0))
-        shine.putalpha(ImageChops.multiply(band, img.getchannel("A")))
-        img.alpha_composite(shine)
-    out.alpha_composite(img, (px + (w - nw) // 2, py + (h - nh) // 2))
+    if (nw, nh) != (w, h):
+        layer = layer.resize((nw, nh), Image.LANCZOS)
+    out.alpha_composite(layer, (pw + (w - nw) // 2, ph + (h - nh) // 2))
     return out
 
 
 def render_logo_frames(lg: Image.Image, fps: float, folder: Path) -> int:
     """PNG d l logo (dkhla + lam3a); l frame lakhra katb9a (overlay kay3awedha)."""
-    n = math.ceil(LOGO_SHINE[1] * fps) + 2
+    n = math.ceil(LOGO_END * fps) + 2
     for i in range(n):
         logo_at(lg, i / fps).save(folder / f"l{i:05d}.png", compress_level=1)
     return n
@@ -606,7 +696,7 @@ def _soft_shadow(lay: Image.Image, blur: int = 5, dy: int = 3, k: float = 0.6) -
 
 
 HDR_Y0, HDR_Y1 = 200, 400   # l header (logo + #rkn) f had l bande
-HDR_END = max(LOGO_SHINE[1], 0.85)
+HDR_END = max(LOGO_END, 0.85)
 
 
 def render_header(fl: FrameLayers, t: float) -> Image.Image:
@@ -787,7 +877,7 @@ SRC_X = 0.012               # b3d men jnab (nisba men l 3ard)
 SRC_START = 0.45            # dkhla
 SRC_GROW, SRC_SWEEP = 0.25, 0.40     # dkhla: khatt dahbi kaykber men l wost, mn ba3d kaymsa7 w l ktaba katban
 SRC_BACK, SRC_SHRINK = 0.35, 0.22    # khrja: b l39s
-SRC_SECONDS = float(os.environ.get("SOURCE_SECONDS", "6"))  # ch7al tb9a source 9bel ma tkhrej
+SRC_HOLD = float(os.environ.get("SOURCE_SECONDS", "1"))  # ch7al tb9a source kamla 9bel ma tkhrej
 
 
 def clean_source(name: str) -> str:
@@ -861,7 +951,9 @@ def source_tab(platform: str, name: str, W: int, H: int, duration: float) -> Sou
     sh.putalpha(fg.getchannel("A").filter(ImageFilter.GaussianBlur(round(4 * s))).point(lambda v: min(255, v * 2) * 0.55))
     content = Image.alpha_composite(sh, fg)
     bt = round(h * 0.62)
-    out = max(1.5, min(SRC_SECONDS, duration - SRC_BACK - SRC_SHRINK - 0.1)) if duration else SRC_SECONDS
+    out = SRC_START + SRC_GROW + SRC_SWEEP + SRC_HOLD
+    if duration:
+        out = max(1.2, min(out, duration - SRC_BACK - SRC_SHRINK - 0.1))
     return SourceTab(content, (round(cy - bt / 2), round(cy + bt / 2)), m, L,
                      round(W * SRC_X) - m, round(H * SRC_CY - (L + 2 * m) / 2), out)
 
