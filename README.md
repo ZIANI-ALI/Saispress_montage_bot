@@ -13,6 +13,8 @@ b animation, **b nefs l qualité**.
    ```
    Satr `#rkn` ikhtiyari.
    L bot kaysowlek: **🏷 Ghir logo** wla **📰 Logo + titre**. Ila khtariti titre w ma ktebtich caption, kaysowlek 3la l 3onwan.
+   Mn ba3d kaysowlek: **📹 Zid source** wla **Bla source**. Ila zditi: platform (X, Instagram, TikTok, Facebook, YouTube),
+   mn ba3d kteb smiyt l page (`@...`) wla clicki «متداول».
 3. L bot kayban lik l progress (tanzil → montage → irsal), w kayrje3 l video ka Fichier.
 4. **✏️ Bddel titre**: kat3awed l montage b 3onwan jdid bla ma t3awed tsifet l video.
    **🔁 Ghir logo / 🔁 Logo + titre**: kat3awed l montage b l format lakhor.
@@ -37,6 +39,8 @@ b animation, **b nefs l qualité**.
   kol wa7da b cover dyalha. Video 4:5 / 3:4 (machi 9:16): l bot kaysowl mor tanzil: ✂️ Crop (full) wla
   🖼 B cadre (video f l wost b fond mdbbel, b7al 16:9).
 - **Logo:** l fo9 3la l imin, l video kamla.
+- **Source (ikhtiyari):** tab navy sghir lasq f jnab l issar (~40% men l fo9): icon d l platform + smiyt l page wla «متداول»,
+  ktaba 3amoudiya (men l t7t l l fo9). Kaykhrej men jnab, mn ba3d l ktaba katban; kayb9a l video kamla.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
   - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.
   - Kaybqa `TITLE_SECONDS` (4.2s).

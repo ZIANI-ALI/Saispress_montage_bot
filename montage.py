@@ -666,6 +666,108 @@ def build_filter_framed(p: Probe, box: tuple[int, int, int, int], anim_y: int | 
                if anim_y is not None else "[base][1:v]overlay=0:0,format=yuv420p[v]"))
 
 
+# ───────────────────────── source (platform + page / متداول) ─────────────────────────
+
+PLATFORMS = ("X", "Instagram", "TikTok", "Facebook", "YouTube")
+SRC_CY = 0.40               # wost d l tab (nisba men l 3lou d l video), f jnab l issar
+SRC_START = 0.45            # dkhla: tab kaykhrej men jnab, mn ba3d l ktaba katban men l t7t l l fo9
+SRC_SLIDE, SRC_REVEAL = 0.30, 0.45
+
+
+def clean_source(name: str) -> str:
+    """Smiyt l page: bla emoji; kelma latin wa7da bla @ → @kelma."""
+    t = re.sub(r"[^\w\s؀-ۿ@.\-]", "", name)
+    t = re.sub(r"\s+", " ", t).strip()[:32]
+    if t and " " not in t and not t.startswith("@") and re.fullmatch(r"[\w.\-]+", t, re.A):
+        t = "@" + t
+    return t
+
+
+def _icon(platform: str, s: int, col) -> Image.Image:
+    """Icon sghir d l platform (mrsoum, bla logos f l font)."""
+    im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    w = max(2, round(s * 0.11))
+    hole = (*NAVY, 255)
+    if platform == "Instagram":
+        d.rounded_rectangle((w / 2, w / 2, s - w / 2 - 1, s - w / 2 - 1), radius=s * 0.3, outline=col, width=w)
+        r = s * 0.21
+        d.ellipse((s / 2 - r, s / 2 - r, s / 2 + r, s / 2 + r), outline=col, width=w)
+        d.ellipse((s * 0.69, s * 0.2, s * 0.69 + w * 1.1, s * 0.2 + w * 1.1), fill=col)
+    elif platform == "YouTube":
+        d.rounded_rectangle((0, s * 0.17, s - 1, s * 0.83), radius=s * 0.2, fill=col)
+        d.polygon([(s * 0.41, s * 0.35), (s * 0.41, s * 0.65), (s * 0.68, s * 0.5)], fill=hole)
+    elif platform == "Facebook":
+        d.ellipse((0, 0, s - 1, s - 1), fill=col)
+        d.text((s * 0.55, s * 0.58), "f", font=_font(FONT_TITLE, round(s * 0.9)), fill=hole, anchor="mm")
+    elif platform == "TikTok":  # note d musi9a
+        r = s * 0.2
+        cx, cy = s * 0.36, s * 0.74
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=col, width=w)
+        x = cx + r - w / 2
+        d.line([(x, cy), (x, s * 0.06)], fill=col, width=w)
+        d.line([(x, s * 0.08), (s * 0.9, s * 0.34)], fill=col, width=w)
+    else:  # X
+        d.line([(s * 0.12, s * 0.08), (s * 0.88, s * 0.92)], fill=col, width=round(w * 1.4))
+        d.line([(s * 0.86, s * 0.08), (s * 0.14, s * 0.92)], fill=col, width=max(2, w // 2))
+    return im
+
+
+@dataclass
+class SourceTab:
+    tab: Image.Image       # l fond (navy + khatt dahbi), dawr 90° (kayt9ra men l t7t l l fo9)
+    content: Image.Image   # icon + ktaba
+    y: int
+
+
+def source_tab(platform: str, name: str, W: int, H: int) -> SourceTab:
+    """Tab 3amoudi lasq f jnab l issar: [icon | smiya] dawr 90° (l icon l t7t)."""
+    s = W / 1080
+    fnt = _font(FONT_PILL, round(34 * s))
+    th, ic = round(62 * s), round(32 * s)
+    pad, gap, edge = round(22 * s), round(14 * s), round(5 * s)
+    rtl = bool(re.search(r"[؀-ۿ]", name))
+    tw = math.ceil(fnt.getlength(name, direction="rtl" if rtl else "ltr"))
+    L = pad + ic + gap + round(3 * s) + gap + tw + pad
+    cy = (th - edge) / 2
+    tab = Image.new("RGBA", (L, th), (0, 0, 0, 0))
+    d = ImageDraw.Draw(tab)
+    r = round(14 * s)
+    d.rounded_rectangle((0, -r, L - 1, th - 1), radius=r, fill=(*NAVY, 235))  # l jiha d l bord bla dwira
+    d.rectangle((r, th - edge, L - 1 - r, th - 1), fill=(*GOLD, 255))
+    content = Image.new("RGBA", (L, th), (0, 0, 0, 0))
+    content.alpha_composite(_icon(platform, ic, (*GOLD, 255)).rotate(-90), (pad, round(cy - ic / 2)))  # icon wa9ef
+    d = ImageDraw.Draw(content)
+    sx = pad + ic + gap
+    d.rectangle((sx, round(cy - ic * 0.45), sx + round(3 * s) - 1, round(cy + ic * 0.45)), fill=(*GOLD, 200))
+    d.text((sx + round(3 * s) + gap, cy + round(2 * s)), name, font=fnt, fill=WHITE, anchor="lm",
+           direction="rtl" if rtl else "ltr")
+    tab, content = tab.rotate(90, expand=True), content.rotate(90, expand=True)
+    return SourceTab(tab, content, round(H * SRC_CY - tab.height / 2))
+
+
+def render_source_frames(st: SourceTab, fps: float, folder: Path) -> int:
+    """Tab kaykhrej men jnab, mn ba3d l ktaba katban men l t7t l l fo9; l frame lakhra katb9a."""
+    w, h = st.tab.size
+    n = math.ceil((SRC_START + SRC_SLIDE + SRC_REVEAL) * fps) + 1
+    for i in range(n):
+        t = i / fps
+        out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        k = _prog(t, SRC_START, SRC_START + SRC_SLIDE)
+        if k > 0:
+            dx = round(w * (k - 1))
+            out.alpha_composite(st.tab.crop((-dx, 0, w, h)), (0, 0))
+            kr = _prog(t, SRC_START + SRC_SLIDE * 0.6, SRC_START + SRC_SLIDE * 0.6 + SRC_REVEAL)
+            if kr > 0:
+                m = Image.new("L", (w, h), 0)
+                ImageDraw.Draw(m).rectangle((0, round(h * (1 - kr)), w, h), fill=255)
+                c = st.content.crop((-dx, 0, w, h))
+                c.putalpha(ImageChops.multiply(c.getchannel("A"), m.crop((-dx, 0, w, h))))
+                out.alpha_composite(c, (0, 0))
+        out.save(folder / f"s{i:05d}.png", compress_level=1)
+    return n
+
+
 # ───────────────────────── ffmpeg ─────────────────────────
 
 def _even(x: float) -> int:
@@ -712,8 +814,8 @@ def build_filter(p: Probe, W: int, H: int, native: bool, logo_xy, ov: Overlay | 
 
 def montage(src: Path, dst: Path, title: str, category: str | None = None,
             progress: Callable[[float], None] | None = None, with_title: bool = True,
-            frame: bool | None = None, fill: bool = True) -> Probe:
-    """with_title=False: ghir logo (w #rkn f frame). frame None: 3la 7sab l format (framed); True: frame 7tta
+            frame: bool | None = None, fill: bool = True, source: tuple[str, str] | None = None) -> Probe:
+    """source: (platform, smiyt l page wla «متداول») → tab f jnab l issar. with_title=False: ghir logo (w #rkn f frame). frame None: 3la 7sab l format (framed); True: frame 7tta
     l 9:16 (titre b animation); False: zoom 9:16 (panel). fill (frame d video machi 3rida): True = crop 7tta
     t3mer l cadre, False = f l wost b fond mdbbel (b7al 16:9)."""
     p = probe(src)
@@ -746,6 +848,14 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
                 render_overlay_frames(ov, p.fps, work)
                 inputs += ["-framerate", f"{p.fps:.5f}", "-i", str(work / "f%05d.png")]
             graph = build_filter(p, W, H, native, (lx, ly), ov)
+        name = clean_source(source[1]) if source else ""
+        if name:  # tab d source fo9 kolchi
+            st = source_tab(source[0], name, *((FW, FH) if frame else (W, H)))
+            render_source_frames(st, p.fps, work)
+            n = 1 + inputs.count("-i")
+            inputs += ["-framerate", f"{p.fps:.5f}", "-i", str(work / "s%05d.png")]
+            graph = (graph.removesuffix("[v]") + f"[v0];[v0][{n}:v]overlay=0:{st.y}:eof_action=repeat,"
+                     "format=yuv420p[v]")
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1",
                "-i", str(src), *inputs,
                "-filter_complex", graph,

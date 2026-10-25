@@ -49,6 +49,8 @@ HELP = (
     "(l satr d #rkn ikhtiyari)\n\n"
     "Bot kaysowlek: <b>🏷 Ghir logo</b> wla <b>📰 Logo + titre</b>.\n"
     "Ila khtariti titre w ma ktebtich caption, ghansowlek 3la l 3onwan.\n"
+    "Mn ba3d kaysowlek 3la <b>source</b>: platform (X, Instagram…) w smiyt l page wla «متداول» "
+    "(katban sghira f jnab l video).\n"
     "Mn ba3d l montage: «✏️ Bddel titre» w «🔁» (ghir logo ⇄ logo + titre) bla ma t3awed tsifet l video.\n"
     "M3a l video katji <b>cover</b> (JPEG) l Reels.\n"
     "/cancel: tlghi kolchi: l montage li khddam, li f l queue, w l 3onwan li kantsenna."
@@ -69,6 +71,8 @@ class Job:
     fill: bool | None = None        # 4:5...: True crop (full), False cadre; None: mazal ma khtarch
     queued: bool = False
     cancelled: bool = False
+    source: tuple[str, str] | None = None  # (platform, smiyt l page wla «متداول»)
+    source_asked: bool = False
 
 
 class Cancelled(Exception):
@@ -77,6 +81,7 @@ class Cancelled(Exception):
 
 jobs: dict[str, Job] = {}
 waiting_title: dict[int, str] = {}  # chat_id -> job_id li kantsennaw lih l 3onwan
+waiting_source: dict[int, str] = {}  # chat_id -> job_id li kantsennaw lih smiyt l page
 queue: asyncio.Queue[str] = asyncio.Queue()
 busy: str | None = None
 busy_task: asyncio.Task | None = None
@@ -168,6 +173,29 @@ def choice_buttons(job_id: str) -> list:
              {"text": "📰 Logo + titre", "callback_data": f"tt:{job_id}"}]]
 
 
+SRC_CHOICE = "📹 Nzid source f l video?"
+TRENDING = "متداول"
+
+
+def source_buttons(job_id: str) -> list:
+    return [[{"text": "✅ Zid source", "callback_data": f"sy:{job_id}"},
+             {"text": "❌ Bla source", "callback_data": f"sn:{job_id}"}]]
+
+
+def platform_buttons(job_id: str) -> list:
+    pl = [{"text": n, "callback_data": f"sp:{job_id}:{i}"} for i, n in enumerate(montage.PLATFORMS)]
+    return [pl[:3], pl[3:]]
+
+
+async def proceed(job: Job) -> None:
+    """Mor ikhtiyar titre: nsowlo 3la source (mra wa7da l kol video), mn ba3d l queue."""
+    if job.source_asked:
+        await enqueue(job)
+        return
+    job.source_asked = True
+    await say(job.chat_id, SRC_CHOICE, reply_to=job.msg_id, buttons=source_buttons(job.id))
+
+
 async def ask_title(job: Job) -> None:
     waiting_title[job.chat_id] = job.id
     await say(job.chat_id, "✍️ Sifet l 3onwan.\n(Ila bghiti l rkn: <code>#دولي</code> f satr lowel)",
@@ -212,6 +240,7 @@ async def on_message(msg: dict) -> None:
         return
     if text == "/cancel":
         waiting_title.pop(chat_id, None)
+        waiting_source.pop(chat_id, None)
         n = cancel_all(chat_id)
         await say(chat_id, f"✔️ Tlgha ({n} video)." if n else "✔️ Tlgha.")
         return
@@ -231,6 +260,20 @@ async def on_message(msg: dict) -> None:
         await say(chat_id, CHOICE, reply_to=msg["message_id"], buttons=choice_buttons(job.id))
         return
 
+    if text and chat_id in waiting_source:
+        job = jobs.get(waiting_source.pop(chat_id))
+        if not job or not job.source:
+            return
+        name = montage.clean_source(text)
+        if not name:
+            waiting_source[chat_id] = job.id
+            await say(chat_id, "❌ Smiya khawya, 3awed.")
+            return
+        job.source = (job.source[0], name)
+        await say(chat_id, f"📹 Source: <b>{esc(job.source[0])} | {esc(name)}</b>")
+        await enqueue(job)
+        return
+
     if text and chat_id in waiting_title:
         job = jobs.get(waiting_title.pop(chat_id))
         if not job:
@@ -243,7 +286,7 @@ async def on_message(msg: dict) -> None:
         job.title, job.with_title = title, True
         if category:  # titre jdid bla rkn: kankhliw l rkn l 9dim
             job.category = category
-        await enqueue(job)
+        await proceed(job)
         return
 
     if text:
@@ -265,7 +308,43 @@ async def on_callback(cb: dict) -> None:
         if job.with_title and not job.title:
             await ask_title(job)
         else:
+            await proceed(job)
+        return
+    if data[:3] in ("sy:", "sn:", "sp:"):  # source: wach, platform, mn ba3d smiya (message) wla متداول
+        parts = data.split(":")
+        job = jobs.get(parts[1])
+        mid = cb["message"]["message_id"]
+        if not job or job.queued:
+            await api("answerCallbackQuery", callback_query_id=cb["id"], text="Deja khtariti.")
+            return
+        await api("answerCallbackQuery", callback_query_id=cb["id"])
+        if data.startswith("sn:"):
+            job.source = None
+            waiting_source.pop(chat_id, None)
+            await api("editMessageText", chat_id=chat_id, message_id=mid, parse_mode="HTML",
+                      text=f"{SRC_CHOICE}\n→ <b>❌ Bla source</b>")
             await enqueue(job)
+        elif data.startswith("sy:"):
+            await api("editMessageText", chat_id=chat_id, message_id=mid, parse_mode="HTML",
+                      text="📹 Mnin jat l video?", reply_markup={"inline_keyboard": platform_buttons(job.id)})
+        else:
+            job.source = (montage.PLATFORMS[int(parts[2])], "")
+            waiting_source[chat_id] = job.id
+            await api("editMessageText", chat_id=chat_id, message_id=mid, parse_mode="HTML",
+                      text=f"📹 <b>{esc(job.source[0])}</b>\n✍️ Kteb smiyt l page (@...), wla clicki «{TRENDING}».",
+                      reply_markup={"inline_keyboard": [[{"text": TRENDING, "callback_data": f"st:{job.id}"}]]})
+        return
+    if data.startswith("st:"):  # source: متداول
+        job = jobs.get(data[3:])
+        if not job or job.queued or not job.source or waiting_source.get(chat_id) != job.id:
+            await api("answerCallbackQuery", callback_query_id=cb["id"], text="Deja khtariti.")
+            return
+        waiting_source.pop(chat_id)
+        job.source = (job.source[0], TRENDING)
+        await api("answerCallbackQuery", callback_query_id=cb["id"])
+        await api("editMessageText", chat_id=chat_id, message_id=cb["message"]["message_id"], parse_mode="HTML",
+                  text=f"📹 Source: <b>{esc(job.source[0])} | {TRENDING}</b>")
+        await enqueue(job)
         return
     if data[:3] in ("fc:", "fb:"):  # 4:5: crop wla cadre (mor tanzil)
         job = jobs.get(data[3:])
@@ -406,7 +485,7 @@ async def process(client: TelegramClient, job: Job) -> None:
 
         t1 = time.time()
         p = await asyncio.to_thread(montage.montage, job.src, out, job.title, job.category, prog,
-                                    bool(job.with_title), frame, job.fill is not False)
+                                    bool(job.with_title), frame, job.fill is not False, job.source)
         t_mt += time.time() - t1
 
         await edit(job.chat_id, status, f"⬆️ Kansifet l video{tag}…")
@@ -419,6 +498,7 @@ async def process(client: TelegramClient, job: Job) -> None:
         W, H, _ = montage.out_size(p, frame)
         style = {False: "📱 Version 9dima (zoom)\n", True: "🖼 Version frame\n"}.get(frame, "")
         caption = (style + (f"{job.title}\n\n" if job.with_title else "🏷 Ghir logo\n\n")
+                   + (f"📹 {job.source[0]} | {job.source[1]}\n" if job.source and job.source[1] else "")
                    + f"{W}×{H} · {p.fps:.0f} fps · {size_mb:.1f} MB")
         buttons = ([Button.inline("✏️ Bddel titre", data=f"rt:{job.id}".encode())] if job.with_title else []) + \
             [Button.inline("🔁 Ghir logo" if job.with_title else "🔁 Logo + titre", data=f"sw:{job.id}".encode())]
