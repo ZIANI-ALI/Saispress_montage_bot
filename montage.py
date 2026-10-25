@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from PIL import Image, ImageChops, ImageDraw, ImageFont, features
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, features
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 NAVY = (13, 26, 60)
@@ -669,9 +669,12 @@ def build_filter_framed(p: Probe, box: tuple[int, int, int, int], anim_y: int | 
 # ───────────────────────── source (platform + page / متداول) ─────────────────────────
 
 PLATFORMS = ("X", "Instagram", "TikTok", "Facebook", "YouTube")
-SRC_CY = 0.40               # wost d l tab (nisba men l 3lou d l video), f jnab l issar
-SRC_START = 0.45            # dkhla: tab kaykhrej men jnab, mn ba3d l ktaba katban men l t7t l l fo9
-SRC_SLIDE, SRC_REVEAL = 0.30, 0.45
+SRC_CY = 0.355              # wost d l ktaba (nisba men l 3lou), lasqa f jnab l issar
+SRC_X = 0.012               # b3d men jnab (nisba men l 3ard)
+SRC_START = 0.45            # dkhla
+SRC_GROW, SRC_SWEEP = 0.25, 0.40     # dkhla: khatt dahbi kaykber men l wost, mn ba3d kaymsa7 w l ktaba katban
+SRC_BACK, SRC_SHRINK = 0.35, 0.22    # khrja: b l39s
+SRC_SECONDS = float(os.environ.get("SOURCE_SECONDS", "6"))  # ch7al tb9a source 9bel ma tkhrej
 
 
 def clean_source(name: str) -> str:
@@ -715,56 +718,77 @@ def _icon(platform: str, s: int, col) -> Image.Image:
 
 @dataclass
 class SourceTab:
-    tab: Image.Image       # l fond (navy + khatt dahbi), dawr 90° (kayt9ra men l t7t l l fo9)
-    content: Image.Image   # icon + ktaba
+    content: Image.Image   # icon | smiya (ofo9i, b shadow), kaytdawr f l akhir
+    bar: tuple             # (y0, y1) d l khatt dahbi (ofo9i)
+    x0: int                # bdya d l ktaba (bla margin d shadow)
+    length: int
+    x: int
     y: int
+    t_out: float
 
 
-def source_tab(platform: str, name: str, W: int, H: int) -> SourceTab:
-    """Tab 3amoudi lasq f jnab l issar: [icon | smiya] dawr 90° (l icon l t7t)."""
+def source_tab(platform: str, name: str, W: int, H: int, duration: float) -> SourceTab:
+    """[icon | smiya] 3amoudi f jnab l issar (kayt9ra men l fo9 l l t7t), ktaba byda b shadow, bla fond."""
     s = W / 1080
     fnt = _font(FONT_PILL, round(34 * s))
-    th, ic = round(62 * s), round(32 * s)
-    pad, gap, edge = round(22 * s), round(14 * s), round(5 * s)
+    ic, gap, sep = round(30 * s), round(12 * s), max(2, round(3 * s))
+    m = round(8 * s)                      # margin d shadow
+    h = round(48 * s)
     rtl = bool(re.search(r"[؀-ۿ]", name))
     tw = math.ceil(fnt.getlength(name, direction="rtl" if rtl else "ltr"))
-    L = pad + ic + gap + round(3 * s) + gap + tw + pad
-    cy = (th - edge) / 2
-    tab = Image.new("RGBA", (L, th), (0, 0, 0, 0))
-    d = ImageDraw.Draw(tab)
-    r = round(14 * s)
-    d.rounded_rectangle((0, -r, L - 1, th - 1), radius=r, fill=(*NAVY, 235))  # l jiha d l bord bla dwira
-    d.rectangle((r, th - edge, L - 1 - r, th - 1), fill=(*GOLD, 255))
-    content = Image.new("RGBA", (L, th), (0, 0, 0, 0))
-    content.alpha_composite(_icon(platform, ic, (*GOLD, 255)).rotate(-90), (pad, round(cy - ic / 2)))  # icon wa9ef
-    d = ImageDraw.Draw(content)
-    sx = pad + ic + gap
-    d.rectangle((sx, round(cy - ic * 0.45), sx + round(3 * s) - 1, round(cy + ic * 0.45)), fill=(*GOLD, 200))
-    d.text((sx + round(3 * s) + gap, cy + round(2 * s)), name, font=fnt, fill=WHITE, anchor="lm",
+    L = ic + gap + sep + gap + tw
+    cy = m + h / 2
+    fg = Image.new("RGBA", (L + 2 * m, h + 2 * m), (0, 0, 0, 0))
+    fg.alpha_composite(_icon(platform, ic, (*WHITE, 255)).rotate(90), (m, round(cy - ic / 2)))  # icon wa9ef
+    d = ImageDraw.Draw(fg)
+    sx = m + ic + gap
+    d.rectangle((sx, round(cy - ic * 0.5), sx + sep - 1, round(cy + ic * 0.5)), fill=(*GOLD, 255))
+    d.text((sx + sep + gap, cy + round(2 * s)), name, font=fnt, fill=WHITE, anchor="lm",
            direction="rtl" if rtl else "ltr")
-    tab, content = tab.rotate(90, expand=True), content.rotate(90, expand=True)
-    return SourceTab(tab, content, round(H * SRC_CY - tab.height / 2))
+    sh = Image.new("RGBA", fg.size, (0, 0, 0, 0))
+    sh.putalpha(fg.getchannel("A").filter(ImageFilter.GaussianBlur(round(4 * s))).point(lambda v: min(255, v * 2) * 0.55))
+    content = Image.alpha_composite(sh, fg)
+    bt = round(h * 0.62)
+    out = max(1.5, min(SRC_SECONDS, duration - SRC_BACK - SRC_SHRINK - 0.1)) if duration else SRC_SECONDS
+    return SourceTab(content, (round(cy - bt / 2), round(cy + bt / 2)), m, L,
+                     round(W * SRC_X) - m, round(H * SRC_CY - (L + 2 * m) / 2), out)
+
+
+def _source_frame(st: SourceTab, t: float) -> Image.Image:
+    """Dkhla: khatt dahbi kaykber men l wost, mn ba3d kaymsa7 men l fo9 l l t7t w l ktaba katban mn ta7to.
+    Khrja: l khatt kayrje3 ygtti l ktaba men l t7t l l fo9, w kaytsaghar l l wost."""
+    w, hh = st.content.size
+    a0, L = st.x0, st.length
+    c = a0 + L / 2
+    to = st.t_out
+    if t < to:
+        k1 = _prog(t, SRC_START, SRC_START + SRC_GROW)
+        k2 = _prog(t, SRC_START + SRC_GROW, SRC_START + SRC_GROW + SRC_SWEEP)
+    else:
+        k2 = 1 - _prog(t, to, to + SRC_BACK)
+        k1 = 1 - _prog(t, to + SRC_BACK, to + SRC_BACK + SRC_SHRINK)
+    out = Image.new("RGBA", (w, hh), (0, 0, 0, 0))
+    e = a0 + L * k2                       # l ktaba katban 9bel e
+    if k2 > 0:
+        m = Image.new("L", (w, hh), 0)
+        ImageDraw.Draw(m).rectangle((0, 0, round(e), hh), fill=255)
+        c_img = st.content.copy()
+        c_img.putalpha(ImageChops.multiply(c_img.getchannel("A"), m))
+        out.alpha_composite(c_img)
+    if k1 > 0 and k2 < 1:
+        x0, x1 = (c - (c - a0) * k1, c + (a0 + L - c) * k1) if k2 <= 0 else (e, a0 + L)
+        y0, y1 = st.bar
+        if x1 - x0 >= 1:
+            ImageDraw.Draw(out).rounded_rectangle((x0, y0, x1, y1), radius=min((y1 - y0) / 2, (x1 - x0) / 2),
+                                                  fill=(*GOLD, 255))
+    return out.rotate(-90, expand=True)   # ofo9i → 3amoudi (l icon l fo9)
 
 
 def render_source_frames(st: SourceTab, fps: float, folder: Path) -> int:
-    """Tab kaykhrej men jnab, mn ba3d l ktaba katban men l t7t l l fo9; l frame lakhra katb9a."""
-    w, h = st.tab.size
-    n = math.ceil((SRC_START + SRC_SLIDE + SRC_REVEAL) * fps) + 1
+    """PNG d source 7tta tsali l khrja; l frame lakhra khawya (eof_action=repeat)."""
+    n = math.ceil((st.t_out + SRC_BACK + SRC_SHRINK) * fps) + 2
     for i in range(n):
-        t = i / fps
-        out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        k = _prog(t, SRC_START, SRC_START + SRC_SLIDE)
-        if k > 0:
-            dx = round(w * (k - 1))
-            out.alpha_composite(st.tab.crop((-dx, 0, w, h)), (0, 0))
-            kr = _prog(t, SRC_START + SRC_SLIDE * 0.6, SRC_START + SRC_SLIDE * 0.6 + SRC_REVEAL)
-            if kr > 0:
-                m = Image.new("L", (w, h), 0)
-                ImageDraw.Draw(m).rectangle((0, round(h * (1 - kr)), w, h), fill=255)
-                c = st.content.crop((-dx, 0, w, h))
-                c.putalpha(ImageChops.multiply(c.getchannel("A"), m.crop((-dx, 0, w, h))))
-                out.alpha_composite(c, (0, 0))
-        out.save(folder / f"s{i:05d}.png", compress_level=1)
+        _source_frame(st, i / fps).save(folder / f"s{i:05d}.png", compress_level=1)
     return n
 
 
@@ -850,11 +874,11 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
             graph = build_filter(p, W, H, native, (lx, ly), ov)
         name = clean_source(source[1]) if source else ""
         if name:  # tab d source fo9 kolchi
-            st = source_tab(source[0], name, *((FW, FH) if frame else (W, H)))
+            st = source_tab(source[0], name, *((FW, FH) if frame else (W, H)), p.duration)
             render_source_frames(st, p.fps, work)
             n = 1 + inputs.count("-i")
             inputs += ["-framerate", f"{p.fps:.5f}", "-i", str(work / "s%05d.png")]
-            graph = (graph.removesuffix("[v]") + f"[v0];[v0][{n}:v]overlay=0:{st.y}:eof_action=repeat,"
+            graph = (graph.removesuffix("[v]") + f"[v0];[v0][{n}:v]overlay={st.x}:{st.y}:eof_action=repeat,"
                      "format=yuv420p[v]")
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1",
                "-i", str(src), *inputs,

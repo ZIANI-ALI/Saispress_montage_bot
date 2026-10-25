@@ -39,8 +39,9 @@ b animation, **b nefs l qualité**.
   kol wa7da b cover dyalha. Video 4:5 / 3:4 (machi 9:16): l bot kaysowl mor tanzil: ✂️ Crop (full) wla
   🖼 B cadre (video f l wost b fond mdbbel, b7al 16:9).
 - **Logo:** l fo9 3la l imin, l video kamla.
-- **Source (ikhtiyari):** tab navy sghir lasq f jnab l issar (~40% men l fo9): icon d l platform + smiyt l page wla «متداول»,
-  ktaba 3amoudiya (men l t7t l l fo9). Kaykhrej men jnab, mn ba3d l ktaba katban; kayb9a l video kamla.
+- **Source (ikhtiyari):** sghira f jnab l issar (~35% men l fo9, b7al l medias): icon d l platform | smiyt l page wla
+  «متداول», ktaba byda 3amoudiya b shadow (bla fond). Dkhla: khatt dahbi kaykber w kaymsa7 w l ktaba katban mn ta7to;
+  khrja b l39s mor `SOURCE_SECONDS` (6 s), wla 9bel l akhir ila l video 9sira.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
   - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.
   - Kaybqa `TITLE_SECONDS` (4.2s).
