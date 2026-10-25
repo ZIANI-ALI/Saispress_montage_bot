@@ -49,7 +49,8 @@ HELP = (
     "(l satr d #rkn ikhtiyari)\n\n"
     "Bot kaysowlek: <b>🏷 Ghir logo</b> wla <b>📰 Logo + titre</b>.\n"
     "Ila khtariti titre w ma ktebtich caption, ghansowlek 3la l 3onwan.\n"
-    "Mn ba3d kaysowlek 3la <b>source</b>: platform (X, Instagram…) w smiyt l page wla «متداول» "
+    "Mn ba3d kaysowlek 3la <b>source</b>: platform (X, Instagram…) w smiyt l page wla «متداول», "
+    "wla «🔥 متداول» direct bla platform "
     "(katban sghira f jnab l video), w 3la l <b>outro</b> f l akhir.\n"
     "Mn ba3d l montage: «✏️ Bddel titre» w «🔁» (ghir logo ⇄ logo + titre) bla ma t3awed tsifet l video.\n"
     "M3a l video katji <b>cover</b> (JPEG) l Reels.\n"
@@ -185,7 +186,7 @@ def source_buttons(job_id: str) -> list:
 
 def platform_buttons(job_id: str) -> list:
     pl = [{"text": n, "callback_data": f"sp:{job_id}:{i}"} for i, n in enumerate(montage.PLATFORMS)]
-    return [pl[:3], pl[3:]]
+    return [pl[:3], pl[3:], [{"text": f"🔥 {TRENDING}", "callback_data": f"sp:{job_id}:t"}]]
 
 
 OUTRO_CHOICE = "🎞 Nzid l outro f l akhir?"
@@ -334,7 +335,13 @@ async def on_callback(cb: dict) -> None:
             await proceed(job)
         elif data.startswith("sy:"):
             await api("editMessageText", chat_id=chat_id, message_id=mid, parse_mode="HTML",
-                      text="📹 Mnin jat l video?", reply_markup={"inline_keyboard": platform_buttons(job.id)})
+                      text=f"📹 Mnin jat l video? (wla 🔥 {TRENDING})", reply_markup={"inline_keyboard": platform_buttons(job.id)})
+        elif parts[2] == "t":  # متداول bla platform: ghir l khatt dahbi f l video
+            job.source = ("", TRENDING)
+            waiting_source.pop(chat_id, None)
+            await api("editMessageText", chat_id=chat_id, message_id=mid, parse_mode="HTML",
+                      text=f"📹 Source: <b>🔥 {TRENDING}</b>")
+            await proceed(job)
         else:
             job.source = (montage.PLATFORMS[int(parts[2])], "")
             waiting_source[chat_id] = job.id
@@ -518,7 +525,7 @@ async def process(client: TelegramClient, job: Job) -> None:
         W, H, _ = montage.out_size(p, frame)
         style = {False: "📱 Version 9dima (zoom)\n", True: "🖼 Version frame\n"}.get(frame, "")
         caption = (style + (f"{job.title}\n\n" if job.with_title else "🏷 Ghir logo\n\n")
-                   + (f"📹 {job.source[0]} | {job.source[1]}\n" if job.source and job.source[1] else "")
+                   + (f"📹 {' | '.join(filter(None, job.source))}\n" if job.source and job.source[1] else "")
                    + f"{W}×{H} · {p.fps:.0f} fps · {size_mb:.1f} MB")
         buttons = ([Button.inline("✏️ Bddel titre", data=f"rt:{job.id}".encode())] if job.with_title else []) + \
             [Button.inline("🔁 Ghir logo" if job.with_title else "🔁 Logo + titre", data=f"sw:{job.id}".encode())]

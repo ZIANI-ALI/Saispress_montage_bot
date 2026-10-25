@@ -939,10 +939,11 @@ def source_tab(platform: str, name: str, W: int, H: int, duration: float) -> Sou
     h = round(48 * s)
     rtl = bool(re.search(r"[؀-ۿ]", name))
     tw = math.ceil(fnt.getlength(name, direction="rtl" if rtl else "ltr"))
-    L = ic + gap + sep + gap + tw
+    L = (ic + gap if platform else 0) + sep + gap + tw  # bla platform (متداول): ghir l khatt dahbi
     cy = m + h / 2
     fg = Image.new("RGBA", (L + 2 * m, h + 2 * m), (0, 0, 0, 0))
-    fg.alpha_composite(_icon(platform, ic, (*WHITE, 255)).rotate(-90), (m + L - ic, round(cy - ic / 2)))  # wa9ef
+    if platform:
+        fg.alpha_composite(_icon(platform, ic, (*WHITE, 255)).rotate(-90), (m + L - ic, round(cy - ic / 2)))  # wa9ef
     d = ImageDraw.Draw(fg)
     sx = m + tw + gap
     d.rectangle((sx, round(cy - ic * 0.5), sx + sep - 1, round(cy + ic * 0.5)), fill=(*GOLD, 255))
