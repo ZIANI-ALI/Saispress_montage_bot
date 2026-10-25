@@ -708,7 +708,7 @@ def render_header(fl: FrameLayers, t: float) -> Image.Image:
         if k > 0:
             m = Image.new("L", (FW, FH), 0)
             ImageDraw.Draw(m).rectangle((0, 0, round(x0 + (x1 - x0) * k), FH), fill=255)
-            b = _alpha(box, min(1.0, k * 2))
+            b = _alpha(box, min(1.0, k * 2)).copy()  # _alpha k>=1 kayrj3 nefs l image: ma nbddlouhach
             b.putalpha(ImageChops.multiply(b.getchannel("A"), m))
             out.alpha_composite(b)
         k = (t - 0.32) / 0.28
