@@ -25,6 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
+      # bdya d l job: l bot kay7sab RUN_MINUTES mn hna (timeout-minutes kay7sab mn hna 7tta howa)
+      - run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
@@ -35,12 +38,34 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # ffmpeg (montage) + fribidi (Pillow kay7tajha l l 7rouf l 3arbiya mrbouta)
+      # ffmpeg (montage) + fribidi (Pillow kay7tajha l l 7rouf l 3arbiya mrbouta).
+      # L .deb kaytkhbbaw f cache: mirror d Ubuntu mrat kay3tel (40 d9i9a) w kaybl3 l w9t d l bot.
+      - id: debs
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/apt-debs
+          key: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}
+
       - run: |
           if ! command -v ffmpeg >/dev/null || ! dpkg -s libfribidi0 >/dev/null 2>&1; then
-            sudo apt-get update -q && sudo apt-get install -y -q ffmpeg libfribidi0
+            if ls ~/apt-debs/*.deb >/dev/null 2>&1 && sudo dpkg -i ~/apt-debs/*.deb >/dev/null; then
+              echo "ffmpeg mn l cache"
+            else
+              mkdir -p ~/apt-debs/partial
+              sudo apt-get update -q
+              sudo apt-get install -y -q -o Dir::Cache::archives="$HOME/apt-debs" ffmpeg libfribidi0
+              sudo rm -rf ~/apt-debs/partial ~/apt-debs/lock
+              sudo chown -R "$USER" ~/apt-debs
+            fi
           fi
           ffmpeg -version | head -1
+
+      - if: steps.debs.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-debs
+          key: ${{ steps.debs.outputs.cache-primary-key }}
 
       - name: Run bot
         run: python bot.py

@@ -584,7 +584,9 @@ async def main() -> None:
     if not ALLOWED:
         raise SystemExit("VIDEO_ALLOWED_IDS khawi")
     WORK.mkdir(parents=True, exist_ok=True)
-    start = time.time()
+    # l 7sab mn bdya d l job (JOB_START), machi mn bdya d l bot: ila t3llat l install, GitHub kay9te3 l job
+    # (timeout-minutes) 9bel ma nlanciw run jay
+    start = float(os.environ.get("JOB_START") or time.time())
     deadline = start + RUN_MINUTES * 60
     me = await api("getMe")
     hook = await api("getWebhookInfo")
@@ -594,7 +596,8 @@ async def main() -> None:
                                          {"command": "cancel", "description": "Lghi kolchi (montage, queue, 3onwan)"}])
     client = TelegramClient(StringSession(), API_ID, API_HASH, receive_updates=False)
     await client.start(bot_token=TOKEN)
-    log.info("[start] @%s · %d user · %.0f d9i9a", me["username"] if me else "?", len(ALLOWED), RUN_MINUTES)
+    log.info("[start] @%s · %d user · %.0f d9i9a", me["username"] if me else "?", len(ALLOWED),
+             (deadline - time.time()) / 60)
     w = asyncio.create_task(worker(client))
     try:
         await poll(deadline)
