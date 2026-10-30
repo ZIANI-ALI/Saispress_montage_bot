@@ -1016,33 +1016,19 @@ def clean_source(name: str) -> str:
 
 
 def _icon(platform: str, s: int, col) -> Image.Image:
-    """Icon sghir d l platform (mrsoum, bla logos f l font)."""
-    im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    w = max(2, round(s * 0.11))
-    hole = (*NAVY, 255)
-    if platform == "Instagram":
-        d.rounded_rectangle((w / 2, w / 2, s - w / 2 - 1, s - w / 2 - 1), radius=s * 0.3, outline=col, width=w)
-        r = s * 0.21
-        d.ellipse((s / 2 - r, s / 2 - r, s / 2 + r, s / 2 + r), outline=col, width=w)
-        d.ellipse((s * 0.69, s * 0.2, s * 0.69 + w * 1.1, s * 0.2 + w * 1.1), fill=col)
-    elif platform == "YouTube":
-        d.rounded_rectangle((0, s * 0.17, s - 1, s * 0.83), radius=s * 0.2, fill=col)
-        d.polygon([(s * 0.41, s * 0.35), (s * 0.41, s * 0.65), (s * 0.68, s * 0.5)], fill=hole)
-    elif platform == "Facebook":
-        d.ellipse((0, 0, s - 1, s - 1), fill=col)
-        d.text((s * 0.55, s * 0.58), "f", font=_font(FONT_TITLE, round(s * 0.9)), fill=hole, anchor="mm")
-    elif platform == "TikTok":  # note d musi9a
-        r = s * 0.2
-        cx, cy = s * 0.36, s * 0.74
-        d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=col, width=w)
-        x = cx + r - w / 2
-        d.line([(x, cy), (x, s * 0.06)], fill=col, width=w)
-        d.line([(x, s * 0.08), (s * 0.9, s * 0.34)], fill=col, width=w)
-    else:  # X
-        d.line([(s * 0.12, s * 0.08), (s * 0.88, s * 0.92)], fill=col, width=round(w * 1.4))
-        d.line([(s * 0.86, s * 0.08), (s * 0.14, s * 0.92)], fill=col, width=max(2, w // 2))
-    return im
+    """Icon d l platform (assets/icons: Simple Icons, CC0) b l loun col."""
+    key = (platform, s, col)
+    if key not in _icon_cache:
+        f = ASSETS / "icons" / f"{platform}.png"
+        mask = Image.open(f if f.exists() else ASSETS / "icons" / "X.png").getchannel("A")
+        im = Image.new("RGBA", (s, s), col[:3] + (0,))
+        a = mask.resize((s, s), Image.LANCZOS)
+        im.putalpha(a.point(lambda v: v * col[3] // 255) if len(col) > 3 else a)
+        _icon_cache[key] = im
+    return _icon_cache[key].copy()
+
+
+_icon_cache: dict = {}
 
 
 @dataclass
