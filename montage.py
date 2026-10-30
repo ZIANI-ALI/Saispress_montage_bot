@@ -1115,11 +1115,11 @@ def render_source_frames(st: SourceTab, fps: float, folder: Path) -> int:
 # kaygttiwha men l imin; mn ba3d l logo b animation dyalo, khatt dahbi, «تابعونا لكل جديد», l site w icons d l réseaux.
 
 OUTRO = os.environ.get("OUTRO", "1") != "0"
-OUTRO_SECONDS = 2.8
+OUTRO_SECONDS = 3.2
 OUTRO_TAG = "تابعونا لكل جديد"
 OUTRO_SITE = os.environ.get("OUTRO_SITE", "saispress.com")
-OUTRO_LOGO_T0 = 0.38          # l logo kaybda (b nefs animation d l header)
-OUTRO_ANIM_END = 2.25         # akhir 7araka (icons); ba9i l outro tabet
+OUTRO_LOGO_T0 = 0.42          # l logo kaybda (logo_wide_at)
+OUTRO_ANIM_END = OUTRO_SECONDS  # l ghobra dahbiya katb9a tt7errek 7tta l akhir
 NAVY_DEEP = (8, 16, 40)
 
 
@@ -1136,6 +1136,9 @@ class OutroLayers:
     site: Image.Image        # pill d l site (crop) + blasto
     site_xy: tuple
     icons: list              # [(Image, (x, y))]
+    center: tuple = (0, 0)   # wost d l iris (l logo)
+    dust: list = None        # [(x, y, r, vy, phase, speed)] ghobra dahbiya
+    sprites: dict = None     # r → sprite d nokta mdawya
 
 
 def outro_layers(W: int, H: int) -> OutroLayers:
@@ -1176,8 +1179,20 @@ def outro_layers(W: int, H: int) -> OutroLayers:
     total = len(names) * ic + (len(names) - 1) * gap
     iy = site_xy[1] + ph + round(70 * s)
     icons = [(_icon(n, ic, (*GOLD, 255)), ((W - total) // 2 + i * (ic + gap), iy)) for i, n in enumerate(names)]
+    rnd = __import__("random").Random(7)  # nefs l ghobra f kol video
+    dust = [(rnd.uniform(0, W), rnd.uniform(0, H), rnd.choice((2, 3, 3, 4, 5, 7)) * s, rnd.uniform(18, 70) * s,
+             rnd.uniform(0, math.tau), rnd.uniform(1.5, 4.0)) for _ in range(46)]
+    sprites = {}
+    for r in sorted({d[2] for d in dust}):
+        R = max(2, round(r * 3))
+        sp = Image.new("RGBA", (2 * R, 2 * R), (*GOLD, 0))
+        m = Image.new("L", sp.size, 0)
+        ImageDraw.Draw(m).ellipse((R - r, R - r, R + r, R + r), fill=255)
+        glow = m.filter(ImageFilter.GaussianBlur(r * 0.9))
+        sp.putalpha(ImageChops.lighter(glow, m.point(lambda v: int(v * 0.85))))
+        sprites[r] = sp
     return OutroLayers(W, H, bg, lg, logo_xy, line_y, tag, ((W - tw) / 2 - 4, (W + tw) / 2 + 4), site, site_xy,
-                       icons)
+                       icons, (W // 2, logo_xy[1] + lg.height // 2), dust, sprites)
 
 
 def _soft_shadow_any(lay: Image.Image, blur: int = 6, dy: int = 3, k: float = 0.55) -> Image.Image:
@@ -1189,55 +1204,102 @@ def _soft_shadow_any(lay: Image.Image, blur: int = 6, dy: int = 3, k: float = 0.
     return out
 
 
+def _dust(o: OutroLayers, t: float, k: float) -> Image.Image:
+    """Ghobra dahbiya katla3 b chwiya w katbrre9 (k: opacité kamla)."""
+    lay = Image.new("RGBA", (o.W, o.H), (0, 0, 0, 0))
+    for x, y, r, vy, ph, sp in o.dust:
+        a = k * (0.35 + 0.65 * (0.5 + 0.5 * math.sin(ph + t * sp)))
+        yy = (y - vy * t) % o.H
+        xx = x + math.sin(ph + t * 0.8) * 10 * o.W / 1080
+        im = o.sprites[r]
+        lay.alpha_composite(_alpha(im, a), (round(xx - im.width / 2), round(yy - im.height / 2)))
+    return lay
+
+
 def render_outro(o: OutroLayers, t: float) -> Image.Image:
     W, H = o.W, o.H
     s = W / 1080
     out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    # 1) bandat kaydkhlo men l imin (dahbi, navy, mn ba3d l fond) w kaygttiw l video
-    sl = H * 0.18
-    span = W + 2 * sl
-    for i, col in enumerate(((*GOLD, 255), (*NAVY, 255), None)):
-        k = _ease_io((t - i * 0.08) / 0.45)
-        if k <= 0:
-            continue
-        edge = W + sl - span * k  # l 7afa l issar (f l wost d l 3lou)
-        m = Image.new("L", (W, H), 0)
-        ImageDraw.Draw(m).polygon([(edge + sl, 0), (W * 3, 0), (W * 3, H), (edge - sl, H)], fill=255)
-        lay = o.bg.copy() if col is None else Image.new("RGBA", (W, H), col)
-        lay.putalpha(m)
+    # 1) l video kat-ghmo9, mn ba3d iris navy kaytfta7 men l wost d l logo b 7al9a dahbiya
+    cx, cy = o.center
+    rmax = math.hypot(max(cx, W - cx), max(cy, H - cy)) + 20 * s
+    k = _ease_io((t - 0.10) / 0.55)
+    dim = _prog(t, 0.0, 0.25) * (1 - k)
+    if dim > 0:
+        out.paste(Image.new("RGBA", (W, H), (0, 0, 0, round(115 * dim))))
+    if k > 0:
+        r = rmax * k
+        lay = o.bg.copy()
+        lay.alpha_composite(_dust(o, t, _prog(t, 0.3, 0.9)))
+        if k < 1:
+            m = Image.new("L", (W, H), 0)
+            ImageDraw.Draw(m).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
+            lay.putalpha(m)
         out.alpha_composite(lay)
+        if k < 1:  # 7al9a dahbiya f l 7afa (+ daw r9i9)
+            d = ImageDraw.Draw(out)
+            lw = max(3, round(7 * s))
+            d.ellipse((cx - r - lw * 2, cy - r - lw * 2, cx + r + lw * 2, cy + r + lw * 2),
+                      outline=(*GOLD, round(70 * (1 - k))), width=lw * 2)
+            d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(*GOLD, 255), width=lw)
     if t < 0.4:
         return out
     # 2) logo jdid b animation dyalo (logo_wide_at)
     lx, ly = o.logo_xy
     out.alpha_composite(logo_wide_at(o.logo, t - OUTRO_LOGO_T0),
                         (lx - round(o.logo.width * LOGO_PAD), ly - round(o.logo.height * LOGO_PAD)))
-    # 3) khatt dahbi kaytfta7 men l wost
-    k = _ease_expo((t - 1.05) / 0.5)
+    # 3) khatt dahbi kaytfta7 men l wost (b daw f jouj rousso)
+    k = _ease_expo((t - 1.20) / 0.55)
     if k > 0:
         half = round(210 * s * k)
-        ImageDraw.Draw(out).rounded_rectangle((W // 2 - half, o.line_y, W // 2 + half, o.line_y + round(5 * s)),
-                                              radius=round(3 * s), fill=(*GOLD, 255))
-    # 4) «تابعونا لكل جديد»: katkchef men l imin + tl3a sghira
-    k = _prog(t, 1.15, 1.6)
+        lt = round(5 * s)
+        d = ImageDraw.Draw(out)
+        d.rounded_rectangle((W // 2 - half, o.line_y, W // 2 + half, o.line_y + lt), radius=round(3 * s),
+                            fill=(*GOLD, 255))
+        if k < 0.98:
+            for ex in (W // 2 - half, W // 2 + half):
+                sp = o.sprites[max(o.sprites)]
+                out.alpha_composite(sp, (ex - sp.width // 2, o.line_y + lt // 2 - sp.height // 2))
+    # 4) «تابعونا لكل جديد»: katkchef men l imin w katla3 b chwiya
+    k = _prog(t, 1.30, 1.80)
     if k > 0:
         tag = _wipe_any(o.tag, o.tag_span, k)
-        out.alpha_composite(tag, (0, round(18 * s * (1 - k))))
-    # 5) l site (pop)
-    k = (t - 1.35) / 0.4
+        out.alpha_composite(_alpha(tag, min(1.0, k * 1.6)), (0, round(26 * s * (1 - k))))
+    # 5) l site: pill kat7el men l wost (3ard), mn ba3d l ktaba katban
+    k = _ease_expo((t - 1.50) / 0.45)
     if k > 0:
-        sc = _back(k)
         sw, sh = o.site.size
-        nw, nh = max(1, round(sw * sc)), max(1, round(sh * sc))
-        out.alpha_composite(_alpha(o.site.resize((nw, nh), Image.LANCZOS), min(1.0, k * 3)),
-                            (o.site_xy[0] + (sw - nw) // 2, o.site_xy[1] + (sh - nh) // 2))
-    # 6) icons wa7d b wa7d
+        nw = max(sh, round(sw * k))
+        pill = o.site.resize((nw, sh), Image.LANCZOS) if nw != sw else o.site
+        if nw != sw:  # 9bel ma tkmmel: ghir l pill bla ktaba (b l 3ard l asli d l 7wayej)
+            pill = Image.new("RGBA", (nw, sh), (0, 0, 0, 0))
+            ImageDraw.Draw(pill).rounded_rectangle((0, 0, nw - 1, sh - 1), radius=sh // 2, fill=(*NAVY, 255),
+                                                   outline=(*GOLD, 255), width=max(2, round(3 * s)))
+            kt = _prog(t, 1.75, 1.95)
+            if kt > 0:
+                c = o.site.crop(((sw - nw) // 2, 0, (sw + nw) // 2, sh))
+                pill.alpha_composite(_alpha(c, kt))
+        out.alpha_composite(_alpha(pill, min(1.0, k * 3)), (o.site_xy[0] + (sw - nw) // 2, o.site_xy[1]))
+    # 6) icons: pop wa7d b wa7d, mn ba3d lam3a katdouz 3lihom
+    row = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     for i, (im, (x, y)) in enumerate(o.icons):
-        k = (t - 1.55 - i * 0.07) / 0.35
+        k = (t - 1.80 - i * 0.08) / 0.40
         if k <= 0:
             continue
-        dy = round(30 * s * (1 - _ease(k)))
-        out.alpha_composite(_alpha(im, min(1.0, k * 2.5)), (x, y + dy))
+        sc = max(0.05, _back(k))
+        nw = max(1, round(im.width * sc))
+        ic = im.resize((nw, nw), Image.LANCZOS) if nw != im.width else im
+        row.alpha_composite(_alpha(ic, min(1.0, k * 3)), (x + (im.width - nw) // 2, y + (im.height - nw) // 2))
+    kg = (t - 2.35) / 0.40
+    if 0 < kg < 1:
+        x0 = o.icons[0][1][0] - 60 * s
+        x1 = o.icons[-1][1][0] + o.icons[-1][0].width + 60 * s
+        e = x0 + (x1 - x0) * _ease_io(kg)
+        g = ImageChops.multiply(row.getchannel("A"), _edge_mask((W, H), e, 70 * s, peak=True))
+        glint = Image.new("RGBA", (W, H), (255, 244, 205, 0))
+        glint.putalpha(g.point(lambda v: int(v * 0.85)))
+        row.alpha_composite(glint)
+    out.alpha_composite(row)
     return out
 
 
@@ -1252,7 +1314,7 @@ def _wipe_any(lay: Image.Image, span: tuple[float, float], k: float) -> Image.Im
 
 def render_outro_frames(W: int, H: int, fps: float, folder: Path) -> int:
     o = outro_layers(W, H)
-    n = math.ceil(OUTRO_ANIM_END * fps) + 1  # mor had l w9t kolchi tabet (eof_action=repeat)
+    n = math.ceil(OUTRO_ANIM_END * fps) + 1  # 7tta l akhir d l outro (l ghobra katt7errek)
     for i in range(n):
         render_outro(o, i / fps).save(folder / f"o{i:05d}.png", compress_level=1)
     return n
