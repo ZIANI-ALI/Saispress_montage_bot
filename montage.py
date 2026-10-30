@@ -1002,7 +1002,7 @@ def build_filter_framed(p: Probe, box: tuple[int, int, int, int], anim_y: int | 
 
 PLATFORMS = ("X", "Instagram", "TikTok", "Facebook", "YouTube")
 SRC_CY = 0.355              # wost d l ktaba (nisba men l 3lou), lasqa f jnab l issar
-SRC_X = 0.05                # b3d men jnab (nisba men l 3ard); 9rib mn l 7af kayt9ta3 f Reels
+SRC_X = 0.09                # b3d men jnab (nisba men l 3ard); 9rib mn l 7af kayt9ta3 f Reels
 SRC_START = 0.45            # dkhla
 SRC_GROW, SRC_SWEEP = 0.25, 0.40     # dkhla: khatt dahbi kaykber men l wost, mn ba3d kaymsa7 w l ktaba katban
 SRC_BACK, SRC_SHRINK = 0.35, 0.22    # khrja: b l39s
