@@ -881,10 +881,10 @@ SRC_HOLD = float(os.environ.get("SOURCE_SECONDS", "1"))  # ch7al tb9a source kam
 
 
 def clean_source(name: str) -> str:
-    """Smiyt l page: bla emoji; kelma latin wa7da bla @ → @kelma."""
+    """Smiyt l page: bla emoji, dima b @ 9damha (ghir «متداول» bla @)."""
     t = re.sub(r"[^\w\s؀-ۿ@.\-]", "", name)
     t = re.sub(r"\s+", " ", t).strip()[:32]
-    if t and " " not in t and not t.startswith("@") and re.fullmatch(r"[\w.\-]+", t, re.A):
+    if t and t != "متداول" and not t.startswith("@"):
         t = "@" + t
     return t
 
@@ -1035,8 +1035,8 @@ def outro_layers(W: int, H: int) -> OutroLayers:
     glow = glow.filter(ImageFilter.GaussianBlur(gw * 0.12)).resize((W, H), Image.BICUBIC)
     bg.paste(Image.new("RGBA", (W, H), (*NAVY, 255)), (0, 0), glow)
 
-    lg = Image.open(ASSETS / "logo.png").convert("RGBA")
-    lw = round(400 * s)
+    lg = Image.open(ASSETS / "logo_wide.png").convert("RGBA")  # logo jdid (سايسبريس + PRESS)
+    lw = round(820 * s)
     lg = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
     cy = round(H * 0.40)
     logo_xy = ((W - lw) // 2, cy - lg.height // 2 - round(40 * s))
