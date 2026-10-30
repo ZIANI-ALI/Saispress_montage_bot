@@ -498,6 +498,135 @@ def logo_at(lg: Image.Image, t: float) -> Image.Image:
     return out
 
 
+# Animation d l logo jdid (outro, ~1.7 s): khatt dahbi kayrsem men l imin l l issar (b daw f rasso), l 7rouf
+# kaytl3o men l khatt wa7d b wa7d (RTL, pop sghir), n9at kaytse9to b pop, l khatt kayrje3 w kaywlli PRESS
+# (mrab3at kaytl3o b tartib), zoom kayrtta7 w f l akhir lam3a.
+LW_LINE = (0.00, 0.42)       # l khatt kayrsem
+LW_PIECE = (0.10, 0.075, 0.50)  # 7rouf: bdya, bin wa7d w wa7d, modda
+LW_DOT = (0.62, 0.05, 0.32)  # n9at
+LW_RETRACT = (0.66, 0.98)    # l khatt kayrje3 l blasat PRESS
+LW_BOX = (0.86, 0.065, 0.36)
+LW_GLINT = (1.28, 1.70)
+LW_END = 1.72
+
+_wide_cache: dict = {}
+
+
+def _wide_parts(lg: Image.Image):
+    """L logo jdid → (7rouf [(img, (x, y))] men l imin l l issar, n9at [...], mrab3at PRESS, y d l khatt)."""
+    key = (lg.size, lg.tobytes()[:4096])
+    if key in _wide_cache:
+        return _wide_cache[key]
+    mark, boxes = _logo_parts(lg)
+    w, h = mark.size
+    lab = mark.getchannel("A").point(lambda v: 255 if v > 8 else 0)
+    pieces, k = [], 0
+    for i, v in enumerate(list(lab.getdata())):
+        if v != 255 or lab.getpixel((i % w, i // w)) != 255:  # ba9i ma t3ellemch
+            continue
+        k += 1
+        ImageDraw.floodfill(lab, (i % w, i // w), k)
+        m = lab.point(lambda x, k=k: 255 if x == k else 0)
+        bb = m.getbbox()
+        img = mark.crop(bb)
+        img.putalpha(ImageChops.multiply(img.getchannel("A"), m.crop(bb)))
+        pieces.append((img, bb[:2], bb))
+        if k >= 250:
+            break
+    is_dot = lambda b: b[3] - b[1] < h * 0.3  # noqa: E731  (n9at sghar; l 7rouf 3alyin)
+    order = lambda p: -(p[2][0] + p[2][2])  # noqa: E731
+    letters = [(i, xy) for i, xy, b in sorted(pieces, key=order) if not is_dot(b)]
+    dots = [(i, xy) for i, xy, b in sorted(pieces, key=order) if is_dot(b)]
+    # l khatt f l faragh bin baseline w PRESS (l mrab3at kaybdaw 62/172 d 7ajmhom ta7t baseline)
+    line_y = (min(xy[1] for _, xy in boxes) - round(boxes[0][0].height * 31 / 172)) if boxes else round(h * 0.7)
+    _wide_cache[key] = (letters, dots, boxes, line_y)
+    return _wide_cache[key]
+
+
+def logo_wide_at(lg: Image.Image, t: float) -> Image.Image:
+    """Logo jdid f l w9t t (nefs canvas d logo_at: LOGO_PAD men kol jiha)."""
+    w, h = lg.size
+    pw, ph = round(w * LOGO_PAD), round(h * LOGO_PAD)
+    out = Image.new("RGBA", (w + 2 * pw, h + 2 * ph), (0, 0, 0, 0))
+    if t <= 0:
+        return out
+    letters, dots, boxes, line_y = _wide_parts(lg)
+    layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    lt = max(3, round(h * 0.032))
+    bx0 = min((xy[0] for _, xy in boxes), default=w // 2)
+    bx1 = max((xy[0] + b.width for b, xy in boxes), default=w)
+
+    # 1) l khatt dahbi: kayrsem men l imin l l issar, mn ba3d kayrje3 l blasat PRESS w kaykhtfi f l mrab3at
+    k = _ease_expo((t - LW_LINE[0]) / (LW_LINE[1] - LW_LINE[0]))
+    r = _ease_io((t - LW_RETRACT[0]) / (LW_RETRACT[1] - LW_RETRACT[0]))
+    fade = 1 - _prog(t, LW_BOX[0] + 0.1, LW_BOX[0] + 0.45)
+    if k > 0 and fade > 0:
+        x1 = w - (w - bx1) * r
+        x0 = x1 - (x1 - 0) * k if r <= 0 else 0 + (bx0 - 0) * r
+        y = line_y + (lt * 2) * r
+        ln = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        d = ImageDraw.Draw(ln)
+        d.rounded_rectangle((x0, y - lt / 2, max(x0 + 1, x1), y + lt / 2), radius=lt / 2, fill=(*GOLD, 255))
+        if k < 1:  # daw f ras l khatt
+            gr = round(h * 0.16)
+            d.ellipse((x0 - gr, y - gr, x0 + gr, y + gr), fill=(255, 226, 140, 120))
+            ln = Image.alpha_composite(ln.filter(ImageFilter.GaussianBlur(gr * 0.45)), ln)
+        layer.alpha_composite(_alpha(ln, fade))
+
+    # 2) l 7rouf kaytl3o men l khatt (clip f l khatt, kaytrkha f l akhir l li ta7to)
+    for i, (im, (x, y)) in enumerate(letters):
+        kp = (t - LW_PIECE[0] - i * LW_PIECE[1]) / LW_PIECE[2]
+        if kp <= 0:
+            continue
+        e = _back(kp)
+        dy = round(h * 0.55 * (1 - e))
+        clip = line_y + (h - line_y) * _ease(kp * 1.4)
+        pc = _alpha(im, min(1.0, kp * 3))
+        vis = round(clip - (y + dy))
+        if vis <= 0:
+            continue
+        if vis < pc.height:
+            pc = pc.crop((0, 0, pc.width, vis))
+        layer.alpha_composite(pc, (x, y + dy))
+
+    # 3) n9at: pop men l wost
+    for i, (im, (x, y)) in enumerate(dots):
+        kd = (t - LW_DOT[0] - i * LW_DOT[1]) / LW_DOT[2]
+        if kd <= 0:
+            continue
+        sc = max(0.05, _back(kd))
+        nw, nh = max(1, round(im.width * sc)), max(1, round(im.height * sc))
+        layer.alpha_composite(_alpha(im.resize((nw, nh), Image.LANCZOS), min(1.0, kd * 3)),
+                              (x + (im.width - nw) // 2, y + (im.height - nh) // 2))
+
+    # 4) PRESS: kol mrab3a kat7el men l khatt (scale y men l fo9) b pop
+    for i, (bx, (x, y)) in enumerate(boxes):
+        kb = (t - LW_BOX[0] - i * LW_BOX[1]) / LW_BOX[2]
+        if kb <= 0:
+            continue
+        sy = max(0.04, _back(kb))
+        nb = bx.resize((bx.width, max(1, round(bx.height * sy))), Image.LANCZOS)
+        layer.alpha_composite(_alpha(nb, min(1.0, kb * 3)), (x, y))
+
+    # 5) lam3a men l issar l l imin
+    kg = (t - LW_GLINT[0]) / (LW_GLINT[1] - LW_GLINT[0])
+    if 0 < kg < 1:
+        span = w + LOGO_TILT * h
+        e = -w * 0.15 - LOGO_TILT * h / 2 + (span + w * 0.3) * _ease_io(kg)
+        g = ImageChops.multiply(layer.getchannel("A"), _edge_mask((w, h), e, w * 0.10, peak=True))
+        glint = Image.new("RGBA", (w, h), (255, 240, 190, 0))
+        glint.putalpha(g.point(lambda v: int(v * 0.8)))
+        layer.alpha_composite(glint)
+
+    # zoom kayrtta7 (1.06 → 1)
+    sc = 1.06 - 0.06 * _ease_expo(t / 1.2)
+    nw, nh = max(1, round(w * sc)), max(1, round(h * sc))
+    if (nw, nh) != (w, h):
+        layer = layer.resize((nw, nh), Image.LANCZOS)
+    out.alpha_composite(layer, (pw + (w - nw) // 2, ph + (h - nh) // 2))
+    return out
+
+
 def render_logo_frames(lg: Image.Image, fps: float, folder: Path) -> int:
     """PNG d l logo (dkhla + lam3a); l frame lakhra katb9a (overlay kay3awedha)."""
     n = math.ceil(LOGO_END * fps) + 2
@@ -881,12 +1010,9 @@ SRC_HOLD = float(os.environ.get("SOURCE_SECONDS", "1"))  # ch7al tb9a source kam
 
 
 def clean_source(name: str) -> str:
-    """Smiyt l page: bla emoji, dima b @ 9damha (ghir «متداول» bla @)."""
-    t = re.sub(r"[^\w\s؀-ۿ@.\-]", "", name)
-    t = re.sub(r"\s+", " ", t).strip()[:32]
-    if t and t != "متداول" and not t.startswith("@"):
-        t = "@" + t
-    return t
+    """Smiyt l page: bla emoji w bla @."""
+    t = re.sub(r"[^\w\s؀-ۿ.\-]", "", name)
+    return re.sub(r"\s+", " ", t).strip()[:32]
 
 
 def _icon(platform: str, s: int, col) -> Image.Image:
@@ -1096,9 +1222,9 @@ def render_outro(o: OutroLayers, t: float) -> Image.Image:
         out.alpha_composite(lay)
     if t < 0.4:
         return out
-    # 2) logo (nefs animation d l header, kbir)
+    # 2) logo jdid b animation dyalo (logo_wide_at)
     lx, ly = o.logo_xy
-    out.alpha_composite(logo_at(o.logo, t - OUTRO_LOGO_T0),
+    out.alpha_composite(logo_wide_at(o.logo, t - OUTRO_LOGO_T0),
                         (lx - round(o.logo.width * LOGO_PAD), ly - round(o.logo.height * LOGO_PAD)))
     # 3) khatt dahbi kaytfta7 men l wost
     k = _ease_expo((t - 1.05) / 0.5)
