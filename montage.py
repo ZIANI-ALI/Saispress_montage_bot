@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, features
 
 ASSETS = Path(__file__).resolve().parent / "assets"
@@ -498,133 +499,191 @@ def logo_at(lg: Image.Image, t: float) -> Image.Image:
     return out
 
 
-# Animation d l logo jdid (outro, ~1.7 s): khatt dahbi kayrsem men l imin l l issar (b daw f rasso), l 7rouf
-# kaytl3o men l khatt wa7d b wa7d (RTL, pop sghir), n9at kaytse9to b pop, l khatt kayrje3 w kaywlli PRESS
-# (mrab3at kaytl3o b tartib), zoom kayrtta7 w f l akhir lam3a.
-LW_LINE = (0.00, 0.42)       # l khatt kayrsem
-LW_PIECE = (0.10, 0.075, 0.50)  # 7rouf: bdya, bin wa7d w wa7d, modda
-LW_DOT = (0.62, 0.05, 0.32)  # n9at
-LW_RETRACT = (0.66, 0.98)    # l khatt kayrje3 l blasat PRESS
-LW_BOX = (0.86, 0.065, 0.36)
-LW_GLINT = (1.28, 1.70)
-LW_END = 1.72
+# Animation d l logo jdid (outro), mbniya 3la chkel l logo (khatt ta7ti + snan 3amoudiyin):
+#   1) l khatt ta7ti kaytktb men l imin l l issar b 7afa dahbiya s5ouna (b7al l qalam), streak kaytb3ha;
+#   2) kol sinna katl3 men west l khatt mlli l qalam kaydouz 3liha (pop sghir), dahbiya w katbred l byad;
+#   3) n9at kaytse9to b pop; 4) PRESS: l mrab3at kaytl7o wa7d b wa7d (flip + flash); 5) lam3a; zoom kayrtta7.
+# W9t mn bdya d l logo.
+LW_BASE = (0.00, 0.78)          # l khatt ta7ti (wipe, kaybda sri3 w kaytbta)
+LW_TOOTH = (0.03, 0.40)         # sinna: delay mor ma ydouz l qalam, modda
+LW_DOT = (0.30, 0.30)           # n9at: delay mor l qalam, modda
+LW_BOX = (0.70, 0.06, 0.40)     # PRESS: bdya, bin mrab3a w mrab3a, modda
+LW_GLINT = (1.30, 1.85)         # lam3a
+GOLD_HI = (255, 224, 140)       # dahbi s5oun (daw)
 
 _wide_cache: dict = {}
 
 
-def _wide_parts(lg: Image.Image):
-    """L logo jdid → (7rouf [(img, (x, y))] men l imin l l issar, n9at [...], mrab3at PRESS, y d l khatt)."""
-    key = (lg.size, lg.tobytes()[:4096])
-    if key in _wide_cache:
-        return _wide_cache[key]
-    mark, boxes = _logo_parts(lg)
-    w, h = mark.size
-    lab = mark.getchannel("A").point(lambda v: 255 if v > 8 else 0)
-    pieces, k = [], 0
-    for i, v in enumerate(list(lab.getdata())):
+def _components(img: Image.Image, limit: int = 300) -> list:
+    """Pieces mfer9in d img (RGBA) → [(crop, (x, y), bbox, pixels)]."""
+    w, h = img.size
+    lab = img.getchannel("A").point(lambda v: 255 if v > 8 else 0)
+    data = list(lab.getdata())
+    out, k = [], 0
+    for i, v in enumerate(data):
         if v != 255 or lab.getpixel((i % w, i // w)) != 255:  # ba9i ma t3ellemch
             continue
         k += 1
         ImageDraw.floodfill(lab, (i % w, i // w), k)
         m = lab.point(lambda x, k=k: 255 if x == k else 0)
         bb = m.getbbox()
-        img = mark.crop(bb)
-        img.putalpha(ImageChops.multiply(img.getchannel("A"), m.crop(bb)))
-        pieces.append((img, bb[:2], bb))
-        if k >= 250:
+        crop = img.crop(bb)
+        crop.putalpha(ImageChops.multiply(crop.getchannel("A"), m.crop(bb)))
+        out.append((crop, bb[:2], bb, m.crop(bb).histogram()[255]))
+        if k >= limit:
             break
-    is_dot = lambda b: b[3] - b[1] < h * 0.3  # noqa: E731  (n9at sghar; l 7rouf 3alyin)
-    order = lambda p: -(p[2][0] + p[2][2])  # noqa: E731
-    letters = [(i, xy) for i, xy, b in sorted(pieces, key=order) if not is_dot(b)]
-    dots = [(i, xy) for i, xy, b in sorted(pieces, key=order) if is_dot(b)]
-    # l khatt f l faragh bin baseline w PRESS (l mrab3at kaybdaw 62/172 d 7ajmhom ta7t baseline)
-    line_y = (min(xy[1] for _, xy in boxes) - round(boxes[0][0].height * 31 / 172)) if boxes else round(h * 0.7)
-    _wide_cache[key] = (letters, dots, boxes, line_y)
-    return _wide_cache[key]
+    return out
 
 
-def logo_wide_at(lg: Image.Image, t: float) -> Image.Image:
-    """Logo jdid f l w9t t (nefs canvas d logo_at: LOGO_PAD men kol jiha)."""
+def _wide_parts(lg: Image.Image) -> dict:
+    """L logo → khatt ta7ti (layer), snan [(img, (x, y), cx)], n9at [(img, (x, y), cx)], mrab3at PRESS."""
+    key = (lg.size, lg.tobytes()[:4096])
+    if key in _wide_cache:
+        return _wide_cache[key]
+    mark, boxes = _logo_parts(lg)
+    w, h = mark.size
+    a = mark.getchannel("A")
+    cov = [sum(1 for x in range(w) if a.getpixel((x, y)) > 128) for y in range(h)]
+    mx = max(cov) or 1
+    rows = [y for y, c in enumerate(cov) if c > mx * 0.5]
+    base_top = rows[0] if rows else round(h * 0.65)
+    base_bot = rows[-1] if rows else round(h * 0.8)
+    # snan: ga3 li fo9 l khatt; pieces sghar (hooks) kaytb3o l sinna l 9riba (nefs l w9t)
+    up = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    up.paste(mark.crop((0, 0, w, base_top)), (0, 0))
+    comps = _components(up)
+    big = [c for c in comps if c[3] >= max(cc[3] for cc in comps) * 0.15] if comps else []
+    teeth = []
+    for im, xy, bb, _ in comps:
+        cx = (bb[0] + bb[2]) / 2
+        if big:
+            near = min(big, key=lambda c: max(0, c[2][0] - bb[2], bb[0] - c[2][2]) + abs((c[2][0] + c[2][2]) / 2 - cx) * 0.01)
+            cx = (near[2][0] + near[2][2]) / 2
+        teeth.append((im, xy, cx))
+    # ta7t: khatt + dil (layer wa7da) w n9at (pieces li ma kaytl9awch m3a l khatt)
+    low = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    low.paste(mark.crop((0, base_top, w, h)), (0, base_top))
+    base = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    dots = []
+    for im, xy, bb, _ in _components(low):
+        if bb[1] > base_bot:
+            dots.append((im, xy, (bb[0] + bb[2]) / 2))
+        else:
+            base.alpha_composite(im, xy)
+    part = dict(base=base, teeth=teeth, dots=dots, boxes=boxes, base_top=base_top,
+                base_y=(base_top + base_bot) / 2)
+    _wide_cache[key] = part
+    return part
+
+
+def _backk(x: float, c1: float) -> float:
+    """Ease out back b overshoot c1 (sghir = rtab)."""
+    x = min(1.0, max(0.0, x))
+    return 1 + (c1 + 1) * (x - 1) ** 3 + c1 * (x - 1) ** 2
+
+
+def _tint(im: Image.Image, col, k: float) -> Image.Image:
+    """Kanmzjo l loun col m3a im (k 0..1); alpha kif howa."""
+    if k <= 0.01:
+        return im
+    c = Image.new("RGBA", im.size, (*col[:3], 0))
+    c.putalpha(im.getchannel("A"))
+    return Image.blend(im, c, min(1.0, k))
+
+
+def logo_wide_at(lg: Image.Image, u: float) -> tuple[Image.Image, tuple | None]:
+    """Logo jdid f l w9t u (canvas b LOGO_PAD men kol jiha) + ras l qalam (x, y, 9owwa) f l canvas, wla None."""
     w, h = lg.size
     pw, ph = round(w * LOGO_PAD), round(h * LOGO_PAD)
     out = Image.new("RGBA", (w + 2 * pw, h + 2 * ph), (0, 0, 0, 0))
-    if t <= 0:
-        return out
-    letters, dots, boxes, line_y = _wide_parts(lg)
+    if u <= 0:
+        return out, None
+    P = _wide_parts(lg)
     layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    lt = max(3, round(h * 0.032))
-    bx0 = min((xy[0] for _, xy in boxes), default=w // 2)
-    bx1 = max((xy[0] + b.width for b, xy in boxes), default=w)
+    head = None
+    f = w * 0.07
+    span = w + LOGO_TILT * h + 2 * f
+    kb = _ease((u - LW_BASE[0]) / (LW_BASE[1] - LW_BASE[0]))
+    edge = w + LOGO_TILT * h / 2 + f - span * kb      # l qalam (x f l wost d l 3lou)
+    # w9t li kaydouz fih l qalam 3la x (bach snan w n9at ytb3oh)
+    xs = [i / 400 for i in range(401)]
 
-    # 1) l khatt dahbi: kayrsem men l imin l l issar, mn ba3d kayrje3 l blasat PRESS w kaykhtfi f l mrab3at
-    k = _ease_expo((t - LW_LINE[0]) / (LW_LINE[1] - LW_LINE[0]))
-    r = _ease_io((t - LW_RETRACT[0]) / (LW_RETRACT[1] - LW_RETRACT[0]))
-    fade = 1 - _prog(t, LW_BOX[0] + 0.1, LW_BOX[0] + 0.45)
-    if k > 0 and fade > 0:
-        x1 = w - (w - bx1) * r
-        x0 = x1 - (x1 - 0) * k if r <= 0 else 0 + (bx0 - 0) * r
-        y = line_y + (lt * 2) * r
-        ln = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        d = ImageDraw.Draw(ln)
-        d.rounded_rectangle((x0, y - lt / 2, max(x0 + 1, x1), y + lt / 2), radius=lt / 2, fill=(*GOLD, 255))
-        if k < 1:  # daw f ras l khatt
-            gr = round(h * 0.16)
-            d.ellipse((x0 - gr, y - gr, x0 + gr, y + gr), fill=(255, 226, 140, 120))
-            ln = Image.alpha_composite(ln.filter(ImageFilter.GaussianBlur(gr * 0.45)), ln)
-        layer.alpha_composite(_alpha(ln, fade))
+    def t_at(x: float) -> float:
+        target = (w + LOGO_TILT * h / 2 + f - x) / span
+        k = next((v for v in xs if _ease(v) >= target), 1.0)
+        return LW_BASE[0] + k * (LW_BASE[1] - LW_BASE[0])
 
-    # 2) l 7rouf kaytl3o men l khatt (clip f l khatt, kaytrkha f l akhir l li ta7to)
-    for i, (im, (x, y)) in enumerate(letters):
-        kp = (t - LW_PIECE[0] - i * LW_PIECE[1]) / LW_PIECE[2]
-        if kp <= 0:
+    # 1) khatt ta7ti: wipe mayl b 7afa s5ouna
+    if kb > 0:
+        b = P["base"]
+        if kb < 1:
+            ba = b.getchannel("A")
+            m = b.copy()
+            m.putalpha(ImageChops.multiply(ba, _edge_mask((w, h), edge, f)))
+            hot = Image.new("RGBA", (w, h), (*GOLD_HI, 0))
+            hot.putalpha(ImageChops.multiply(ba, _edge_mask((w, h), edge, f * 2.2, peak=True)))
+            m.alpha_composite(hot)
+            layer.alpha_composite(m)
+            head = (edge + f * 0.5 - LOGO_TILT * (P["base_y"] - h / 2), P["base_y"], 1 - kb ** 3)
+        else:
+            layer.alpha_composite(b)
+
+    # 2) snan: katl3 men west l khatt (clip f base_top), s5ouna → byda
+    bt = P["base_top"]
+    for im, (x, y), cx in P["teeth"]:
+        kt = (u - t_at(cx) - LW_TOOTH[0]) / LW_TOOTH[1]
+        if kt <= 0:
             continue
-        e = _back(kp)
-        dy = round(h * 0.55 * (1 - e))
-        clip = line_y + (h - line_y) * _ease(kp * 1.4)
-        pc = _alpha(im, min(1.0, kp * 3))
-        vis = round(clip - (y + dy))
+        dy = round((bt - y) * (1 - _ease(kt)))  # bla overshoot (ma ykounch faragh m3a l khatt)
+        vis = bt - (y + dy)
         if vis <= 0:
             continue
+        pc = _tint(im, GOLD_HI, 0.85 * (1 - _ease(kt * 1.3)) ** 1.5)
         if vis < pc.height:
             pc = pc.crop((0, 0, pc.width, vis))
         layer.alpha_composite(pc, (x, y + dy))
 
-    # 3) n9at: pop men l wost
-    for i, (im, (x, y)) in enumerate(dots):
-        kd = (t - LW_DOT[0] - i * LW_DOT[1]) / LW_DOT[2]
+    # 3) n9at: pop men l wost b flash dahbi
+    for im, (x, y), cx in P["dots"]:
+        kd = (u - t_at(cx) - LW_DOT[0]) / LW_DOT[1]
         if kd <= 0:
             continue
         sc = max(0.05, _back(kd))
         nw, nh = max(1, round(im.width * sc)), max(1, round(im.height * sc))
-        layer.alpha_composite(_alpha(im.resize((nw, nh), Image.LANCZOS), min(1.0, kd * 3)),
-                              (x + (im.width - nw) // 2, y + (im.height - nh) // 2))
+        pc = _tint(im.resize((nw, nh), Image.LANCZOS), GOLD_HI, 1 - _ease(kd))
+        layer.alpha_composite(_alpha(pc, min(1.0, kd * 3)), (x + (im.width - nw) // 2, y + (im.height - nh) // 2))
 
-    # 4) PRESS: kol mrab3a kat7el men l khatt (scale y men l fo9) b pop
-    for i, (bx, (x, y)) in enumerate(boxes):
-        kb = (t - LW_BOX[0] - i * LW_BOX[1]) / LW_BOX[2]
-        if kb <= 0:
+    # 4) PRESS: kol mrab3a kat7el men l fo9 (flip): ghamda → dahbi, w flash sghir f l akhir
+    for i, (bx, (x, y)) in enumerate(P["boxes"]):
+        kq = (u - LW_BOX[0] - i * LW_BOX[1]) / LW_BOX[2]
+        if kq <= 0:
             continue
-        sy = max(0.04, _back(kb))
+        sy = max(0.04, _backk(kq, 1.4))
         nb = bx.resize((bx.width, max(1, round(bx.height * sy))), Image.LANCZOS)
-        layer.alpha_composite(_alpha(nb, min(1.0, kb * 3)), (x, y))
+        nb = _tint(nb, (70, 52, 10), 0.55 * (1 - min(1.0, kq * 1.6)))
+        nb = _tint(nb, (255, 246, 214), 0.5 * max(0.0, 1 - abs(kq - 0.62) / 0.22))
+        layer.alpha_composite(_alpha(nb, min(1.0, kq * 3)), (x, y))
 
-    # 5) lam3a men l issar l l imin
-    kg = (t - LW_GLINT[0]) / (LW_GLINT[1] - LW_GLINT[0])
+    # 5) lam3a men l issar l l imin (3la l logo kaml)
+    kg = (u - LW_GLINT[0]) / (LW_GLINT[1] - LW_GLINT[0])
     if 0 < kg < 1:
-        span = w + LOGO_TILT * h
-        e = -w * 0.15 - LOGO_TILT * h / 2 + (span + w * 0.3) * _ease_io(kg)
-        g = ImageChops.multiply(layer.getchannel("A"), _edge_mask((w, h), e, w * 0.10, peak=True))
-        glint = Image.new("RGBA", (w, h), (255, 240, 190, 0))
-        glint.putalpha(g.point(lambda v: int(v * 0.8)))
+        sp = w + LOGO_TILT * h
+        e = -w * 0.15 - LOGO_TILT * h / 2 + (sp + w * 0.3) * _ease_io(kg)
+        g = ImageChops.multiply(layer.getchannel("A"), _edge_mask((w, h), e, w * 0.09, peak=True))
+        glint = Image.new("RGBA", (w, h), (255, 244, 205, 0))
+        glint.putalpha(g.point(lambda v: int(v * 0.85)))
         layer.alpha_composite(glint)
 
-    # zoom kayrtta7 (1.06 → 1)
-    sc = 1.06 - 0.06 * _ease_expo(t / 1.2)
+    # zoom kayrtta7 (1.05 → 1)
+    sc = 1.05 - 0.05 * _ease_expo(u / 1.3)
     nw, nh = max(1, round(w * sc)), max(1, round(h * sc))
     if (nw, nh) != (w, h):
         layer = layer.resize((nw, nh), Image.LANCZOS)
-    out.alpha_composite(layer, (pw + (w - nw) // 2, ph + (h - nh) // 2))
-    return out
+    ox, oy = pw + (w - nw) // 2, ph + (h - nh) // 2
+    out.alpha_composite(layer, (ox, oy))
+    if head:
+        head = (ox + head[0] * nw / w, oy + head[1] * nh / h, head[2])
+    return out, head
 
 
 def render_logo_frames(lg: Image.Image, fps: float, folder: Path) -> int:
@@ -1111,73 +1170,73 @@ def render_source_frames(st: SourceTab, fps: float, folder: Path) -> int:
 
 
 # ───────────────────────── outro (end card) ─────────────────────────
-# B7al l pages l kbar d l akhbar (AJ+, Brut…): l video kat7bes f akhir frame w bandat mayliin (dahbi, navy)
-# kaygttiwha men l imin; mn ba3d l logo b animation dyalo, khatt dahbi, «تابعونا لكل جديد», l site w icons d l réseaux.
+# End card «signature» (~3.4 s), b7al l pages l kbar d l akhbar:
+#   0.00 l video kat7bes f akhir frame; 3 bandat mayliin (dahbi, navy, fond) kaygttiwha men l imin, b dell w
+#        khatt dow f 7afa d l fond (motion blur 7a9i9i: kol frame = moyenne d sub-frames).
+#   0.40 logo jdid (logo_wide_at: l khatt kaytktb, snan kaytl3o) + streak anamorphic dahbi kaytb3 l qalam;
+#        daw l fond kaytnffes m3ah.
+#   1.42 khatt dahbi kaytfta7 men l wost → «تابعونا لكل جديد» (wipe rtab) → pill d l site (l cadre kayrsem) →
+#        icons f dwayr (pop wa7d b wa7d).
+#   Kolchi kayzid y9rab b chwiya (camera push-in), daw rtab kaydouz f l fond, grain d cinema (ffmpeg noise).
+# L frames kaytrsmo mra wa7da l kol (W, H, fps) w kaytkhbbaw f /tmp (l versions dyal nefs l video kayst3mlohom).
 
 OUTRO = os.environ.get("OUTRO", "1") != "0"
-OUTRO_SECONDS = 2.8
+OUTRO_GRAIN = int(os.environ.get("OUTRO_GRAIN", "5"))  # 0 = bla grain
+OUTRO_SECONDS = 3.4
 OUTRO_TAG = "تابعونا لكل جديد"
 OUTRO_SITE = os.environ.get("OUTRO_SITE", "saispress.com")
-OUTRO_LOGO_T0 = 0.38          # l logo kaybda (b nefs animation d l header)
-OUTRO_ANIM_END = 2.25         # akhir 7araka (icons); ba9i l outro tabet
 NAVY_DEEP = (8, 16, 40)
+CREAM = (247, 245, 240)
+OT_WIPE = (0.0, 0.07, 0.52)     # bandat: bdya, bin wa7da w wa7da, modda
+OT_LOGO = 0.40                  # logo kaybda
+OT_DIV = (1.42, 0.50)           # khatt l wost
+OT_TAG = (1.52, 2.00)
+OT_PILL = (1.70, 0.50)          # cadre d l pill kayrsem
+OT_ICON = (1.98, 0.065, 0.42)   # icons
+OT_SETTLE = 2.70                # mor had l w9t ghir l fond w l camera kaytt7rrko
+OUTRO_CACHE = Path(tempfile.gettempdir()) / "saispress-outro"
 
 
-@dataclass
-class OutroLayers:
-    W: int
-    H: int
-    bg: Image.Image          # navy b daw f l wost
-    logo: Image.Image
-    logo_xy: tuple
-    line_y: int
-    tag: Image.Image         # ktaba (layer kamel)
-    tag_span: tuple
-    site: Image.Image        # pill d l site (crop) + blasto
-    site_xy: tuple
-    icons: list              # [(Image, (x, y))]
+def _sine_io(x: float) -> float:
+    x = min(1.0, max(0.0, x))
+    return 0.5 - 0.5 * math.cos(math.pi * x)
 
 
-def outro_layers(W: int, H: int) -> OutroLayers:
-    s = W / 1080
-    bg = Image.new("RGBA", (W, H), (*NAVY_DEEP, 255))
-    glow = Image.new("L", (W // 8, H // 8), 0)
-    gw, gh = glow.size
-    ImageDraw.Draw(glow).ellipse((gw * 0.05, gh * 0.22, gw * 0.95, gh * 0.62), fill=150)
-    glow = glow.filter(ImageFilter.GaussianBlur(gw * 0.12)).resize((W, H), Image.BICUBIC)
-    bg.paste(Image.new("RGBA", (W, H), (*NAVY, 255)), (0, 0), glow)
+def _quint_io(x: float) -> float:
+    x = min(1.0, max(0.0, x))
+    return 16 * x ** 5 if x < 0.5 else 1 - (-2 * x + 2) ** 5 / 2
 
-    lg = Image.open(ASSETS / "logo_wide.png").convert("RGBA")  # logo jdid (سايسبريس + PRESS)
-    lw = round(820 * s)
-    lg = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
-    cy = round(H * 0.40)
-    logo_xy = ((W - lw) // 2, cy - lg.height // 2 - round(40 * s))
-    line_y = logo_xy[1] + lg.height + round(50 * s)
 
-    tf = _font(FONT_TITLE, round(62 * s))
-    tag = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ty = line_y + round(42 * s)
-    ImageDraw.Draw(tag).text((W / 2, ty), OUTRO_TAG, font=tf, fill=WHITE, anchor="ma", direction="rtl")
-    tw = _width(OUTRO_TAG, tf)
-    tag = _soft_shadow_any(tag)
-
-    sf = _font(FONT_PILL, round(40 * s))
-    sw = math.ceil(sf.getlength(OUTRO_SITE))
-    ph, padx = round(76 * s), round(36 * s)
-    site = Image.new("RGBA", (sw + 2 * padx, ph), (0, 0, 0, 0))
-    d = ImageDraw.Draw(site)
-    d.rounded_rectangle((0, 0, site.width - 1, ph - 1), radius=ph // 2, fill=(*NAVY, 255), outline=(*GOLD, 255),
-                        width=max(2, round(3 * s)))
-    d.text((site.width / 2, ph / 2 + round(2 * s)), OUTRO_SITE, font=sf, fill=WHITE, anchor="mm")
-    site_xy = ((W - site.width) // 2, ty + round(110 * s))
-
-    ic, gap = round(54 * s), round(34 * s)
-    names = ("Instagram", "Facebook", "TikTok", "YouTube", "X")
-    total = len(names) * ic + (len(names) - 1) * gap
-    iy = site_xy[1] + ph + round(70 * s)
-    icons = [(_icon(n, ic, (*GOLD, 255)), ((W - total) // 2 + i * (ic + gap), iy)) for i, n in enumerate(names)]
-    return OutroLayers(W, H, bg, lg, logo_xy, line_y, tag, ((W - tw) / 2 - 4, (W + tw) / 2 + 4), site, site_xy,
-                       icons)
+def _ring_path(w: float, h: float, r: float, inset: float, n: int = 360) -> list:
+    """Points d cadre mdawwer (rounded rect), mn l wost d l t7t, f jjiha d l 3a9arib (n points)."""
+    x0, y0, x1, y1 = inset, inset, w - inset, h - inset
+    r = min(r, (x1 - x0) / 2, (y1 - y0) / 2)
+    segs = [((x0 + r, y1), (x1 - r, y1)), None, ((x1, y1 - r), (x1, y0 + r)), None,
+            ((x1 - r, y0), (x0 + r, y0)), None, ((x0, y0 + r), (x0, y1 - r)), None]
+    arcs = {1: (x1 - r, y1 - r, 90, 0), 3: (x1 - r, y0 + r, 0, -90), 5: (x0 + r, y0 + r, -90, -180),
+            7: (x0 + r, y1 - r, 180, 90)}
+    pts = []
+    for i, sg in enumerate(segs):
+        if sg:
+            (ax, ay), (bx, by) = sg
+            pts += [(ax + (bx - ax) * j / 24, ay + (by - ay) * j / 24) for j in range(24)]
+        else:
+            cx, cy, a0, a1 = arcs[i]
+            pts += [(cx + r * math.cos(math.radians(a0 + (a1 - a0) * j / 16)),
+                     cy + r * math.sin(math.radians(a0 + (a1 - a0) * j / 16))) for j in range(16)]
+    pts = pts[12:] + pts[:13]   # bdya f l wost d l t7t (nos d segment 0)
+    # resample b masafat mtsawya
+    d = [0.0]
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        d.append(d[-1] + math.hypot(bx - ax, by - ay))
+    out, j = [], 0
+    for i in range(n + 1):
+        s = d[-1] * i / n
+        while j < len(d) - 2 and d[j + 1] < s:
+            j += 1
+        f = (s - d[j]) / max(1e-6, d[j + 1] - d[j])
+        out.append((pts[j][0] + (pts[j + 1][0] - pts[j][0]) * f, pts[j][1] + (pts[j + 1][1] - pts[j][1]) * f))
+    return out
 
 
 def _soft_shadow_any(lay: Image.Image, blur: int = 6, dy: int = 3, k: float = 0.55) -> Image.Image:
@@ -1189,73 +1248,275 @@ def _soft_shadow_any(lay: Image.Image, blur: int = 6, dy: int = 3, k: float = 0.
     return out
 
 
-def render_outro(o: OutroLayers, t: float) -> Image.Image:
-    W, H = o.W, o.H
-    s = W / 1080
-    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    # 1) bandat kaydkhlo men l imin (dahbi, navy, mn ba3d l fond) w kaygttiw l video
-    sl = H * 0.18
-    span = W + 2 * sl
-    for i, col in enumerate(((*GOLD, 255), (*NAVY, 255), None)):
-        k = _ease_io((t - i * 0.08) / 0.45)
-        if k <= 0:
-            continue
-        edge = W + sl - span * k  # l 7afa l issar (f l wost d l 3lou)
-        m = Image.new("L", (W, H), 0)
-        ImageDraw.Draw(m).polygon([(edge + sl, 0), (W * 3, 0), (W * 3, H), (edge - sl, H)], fill=255)
-        lay = o.bg.copy() if col is None else Image.new("RGBA", (W, H), col)
-        lay.putalpha(m)
-        out.alpha_composite(lay)
-    if t < 0.4:
+class Outro:
+    """Kolchi li tabet (fond, logo, ktaba, pill, icons) kaytwejjed mra wa7da; frame(t) kayrkkeb b numpy."""
+
+    def __init__(self, W: int, H: int):
+        self.W, self.H = W, H
+        s = self.s = W / 1080
+        # ── layout (group mcentri 7da 45% d l 3lou, b3id 3la l UI d Reels l t7t)
+        lg = Image.open(ASSETS / "logo_wide.png").convert("RGBA")
+        lw = round(860 * s)
+        self.logo = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
+        tf = _font(FONT_TITLE, round(60 * s))
+        sf = _font(FONT_PILL, round(38 * s))
+        self.ph, padx = round(78 * s), round(40 * s)
+        self.ring, gap = round(88 * s), round(28 * s)
+        asc, desc = tf.getmetrics()
+        hs = [self.logo.height, round(54 * s), round(5 * s), round(40 * s), asc + desc, round(44 * s), self.ph,
+              round(62 * s), self.ring]
+        top = round(H * 0.45 - sum(hs) / 2)
+        ys = list(itertools.accumulate([top] + hs))
+        self.cy = ys[0] + self.logo.height / 2
+        # canvas d l group (kolchi ma3ada l fond), bach l camera t9der tkber gher had l blasa
+        m = round(90 * s)
+        self.g0, g1 = ys[0] - m, ys[-1] + m
+        GH = g1 - self.g0
+        self.GH = GH
+        rel = lambda y: y - self.g0  # noqa: E731
+        self.logo_xy = ((W - lw) // 2, rel(ys[0]))
+
+        # khatt l wost: dahbi, fat7 f l wost w kaytfada f jnab
+        half = round(250 * s)
+        dv = Image.new("RGBA", (2 * half, round(5 * s)), (*GOLD, 0))
+        a = Image.new("L", (2 * half, 1))
+        a.putdata([int(255 * max(0.0, 1 - abs(x - half + 0.5) / half) ** 0.6) for x in range(2 * half)])
+        dv.putalpha(a.resize(dv.size))
+        self.div, self.div_xy = dv, ((W - 2 * half) // 2, rel(ys[2]))
+
+        # ktaba
+        tw = math.ceil(_width(OUTRO_TAG, tf))
+        tag = Image.new("RGBA", (tw + 40, asc + desc + 40), (0, 0, 0, 0))
+        ImageDraw.Draw(tag).text((tag.width / 2, 20), OUTRO_TAG, font=tf, fill=CREAM, anchor="ma", direction="rtl")
+        self.tag = _soft_shadow_any(tag, blur=round(8 * s), dy=round(4 * s), k=0.5)
+        self.tag_xy = ((W - tag.width) // 2, rel(ys[4]) - 20)
+
+        # pill d l site: fond navy, cadre dahbi kayrsem, ktaba
+        txt = OUTRO_SITE
+        sw = math.ceil(sf.getlength(txt)) + round(3 * s) * (len(txt) - 1)
+        pw_ = sw + 2 * padx
+        self.pill_bg = Image.new("RGBA", (pw_, self.ph), (0, 0, 0, 0))
+        ImageDraw.Draw(self.pill_bg).rounded_rectangle((0, 0, pw_ - 1, self.ph - 1), radius=self.ph // 2,
+                                                       fill=(*NAVY, 235))
+        self.pill_txt = Image.new("RGBA", (pw_, self.ph), (0, 0, 0, 0))
+        d = ImageDraw.Draw(self.pill_txt)
+        x = padx
+        for ch in txt:  # tracking sghir
+            d.text((x, self.ph / 2 + round(2 * s)), ch, font=sf, fill=CREAM, anchor="lm")
+            x += sf.getlength(ch) + round(3 * s)
+        self.stroke = max(2, round(3 * s))
+        self.pill_path = _ring_path(pw_, self.ph, self.ph / 2, self.stroke / 2 + 0.5)
+        self.pill_xy = ((W - pw_) // 2, rel(ys[6]))
+
+        # icons f dwayr dahbiyin
+        names = ("Instagram", "Facebook", "TikTok", "YouTube", "X")
+        R = self.ring
+        total = len(names) * R + (len(names) - 1) * gap
+        self.icons = []
+        for i, n in enumerate(names):
+            im = Image.new("RGBA", (R, R), (0, 0, 0, 0))
+            d = ImageDraw.Draw(im)
+            d.ellipse((1, 1, R - 2, R - 2), fill=(*NAVY, 200), outline=(*GOLD, 255), width=max(2, round(2.5 * s)))
+            ic = round(R * 0.46)
+            im.alpha_composite(_icon(n, ic, (*CREAM, 255)), ((R - ic) // 2, (R - ic) // 2))
+            self.icons.append((im, ((W - total) // 2 + i * (R + gap), rel(ys[8]))))
+
+        # ── fond (numpy): navy b daw f l wost, vignette, khoyout r9a9 mayliin (texture)
+        Y, X = np.mgrid[0:H, 0:W].astype(np.float32)
+        self.sl = H * 0.18
+        self.B = X + (2 * self.sl / H) * Y          # 7afa mayla: x - x_edge(y) = B - edge - sl
+        r2 = ((X - W / 2) / (W * 0.80)) ** 2 + ((Y - self.cy) / (H * 0.34)) ** 2
+        glow = np.exp(-r2 * 2.0)
+        deep, navy = np.array(NAVY_DEEP, np.float32), np.array(NAVY, np.float32)
+        bg = deep + (navy - deep) * glow[..., None]
+        v = np.clip(np.abs(Y / H - 0.46) / 0.55, 0, 1) ** 2
+        bg *= (1 - 0.40 * v)[..., None]
+        sp = 46 * s
+        lines = np.clip(1 - np.abs(np.mod(self.B, sp) - sp / 2) / (0.8 * s), 0, 1) * glow * 0.07
+        bg += lines[..., None] * (np.array(GOLD, np.float32) - bg)
+        self.bg = bg
+        self.glow3 = glow[..., None] * np.array((7, 13, 28), np.float32)   # daw kaytnffes
+        del X, Y, r2, v, lines
+        self.cols = (np.array((*GOLD, 255), np.float32) / 255, np.array((*NAVY, 255), np.float32) / 255)
+
+    # ── content (PIL) f canvas d l group
+    def content(self, t: float):
+        W, s = self.W, self.s
+        cv = Image.new("RGBA", (W, self.GH), (0, 0, 0, 0))
+        im, head = logo_wide_at(self.logo, t - OT_LOGO)
+        lx, ly = self.logo_xy
+        px, py = round(self.logo.width * LOGO_PAD), round(self.logo.height * LOGO_PAD)
+        cv.alpha_composite(im, (lx - px, ly - py))
+        if head:
+            head = (head[0] + lx - px, head[1] + ly - py, head[2])
+        # khatt l wost
+        k = _ease_expo((t - OT_DIV[0]) / OT_DIV[1])
+        if k > 0:
+            hw = max(1, round(self.div.width / 2 * k))
+            c = self.div.width // 2
+            part = self.div.crop((c - hw, 0, c + hw, self.div.height))
+            cv.alpha_composite(part, (self.div_xy[0] + c - hw, self.div_xy[1]))
+        # ktaba: wipe rtab men l imin + tl3a
+        k = _prog(t, *OT_TAG)
+        if k > 0:
+            tg = self.tag
+            f = tg.width * 0.25
+            edge = tg.width + f - (tg.width + 2 * f) * _sine_io(k) if k < 1 else -f
+            a = Image.new("L", (tg.width, 1))
+            a.putdata([int(255 * min(1.0, max(0.0, (x - edge) / f))) for x in range(tg.width)])
+            lay = tg.copy()
+            lay.putalpha(ImageChops.multiply(tg.getchannel("A"), a.resize(tg.size)))
+            cv.alpha_composite(lay, (self.tag_xy[0], self.tag_xy[1] + round(16 * s * (1 - k))))
+        # pill: cadre kayrsem men l wost d l t7t l jouj jihat, mn ba3d fond w ktaba
+        k = _ease_io((t - OT_PILL[0]) / OT_PILL[1])
+        if k > 0:
+            pb = self.pill_bg
+            lay = Image.new("RGBA", pb.size, (0, 0, 0, 0))
+            kf = _prog(t, OT_PILL[0] + 0.25, OT_PILL[0] + 0.6)
+            if kf > 0:
+                lay.alpha_composite(_alpha(pb, kf))
+            n = len(self.pill_path) - 1
+            m = max(1, round(n / 2 * k))
+            d = ImageDraw.Draw(lay)
+            d.line(self.pill_path[:m + 1], fill=(*GOLD, 255), width=self.stroke, joint="curve")
+            d.line(self.pill_path[n - m:], fill=(*GOLD, 255), width=self.stroke, joint="curve")
+            kt = _prog(t, OT_PILL[0] + 0.32, OT_PILL[0] + 0.7)
+            if kt > 0:
+                lay.alpha_composite(_alpha(self.pill_txt, kt))
+            cv.alpha_composite(lay, self.pill_xy)
+        # icons: pop men l t7t wa7d b wa7d
+        for i, (ic, (x, y)) in enumerate(self.icons):
+            k = (t - OT_ICON[0] - i * OT_ICON[1]) / OT_ICON[2]
+            if k <= 0:
+                continue
+            sc = 0.6 + 0.4 * _backk(k, 1.6)
+            nw = max(1, round(ic.width * sc))
+            im = ic.resize((nw, nw), Image.LANCZOS) if nw != ic.width else ic
+            dy = round(26 * s * (1 - _ease(k)))
+            cv.alpha_composite(_alpha(im, min(1.0, k * 2.5)), (x + (ic.width - nw) // 2, y + (ic.width - nw) // 2 + dy))
+        return cv, head
+
+    def frame(self, t: float, sh: float = 0.0) -> np.ndarray:
+        """Frame premultiplied RGBA float (0..1) f l w9t t; sh = shutter (motion blur d l bandat b l 7sab)."""
+        W, H, s = self.W, self.H, self.s
+        out = np.zeros((H, W, 4), np.float32)
+        span = W + 2 * self.sl
+        kw = lambda i, x: _quint_io((x - OT_WIPE[0] - i * OT_WIPE[1]) / OT_WIPE[2])  # noqa: E731
+        ks = [kw(i, t) for i in range(3)]
+        # motion blur d l 7afa: 3ard = l masafa li kat9te3 f l shutter
+        bws = [max(1.2, span * abs(kw(i, t + sh / 2) - kw(i, t - sh / 2))) for i in range(3)]
+        shw = 46 * s
+        bgm = None
+        for i, k in enumerate(ks):
+            if k <= 0 or (i < 2 and ks[i + 1] >= 1):
+                continue
+            dx = self.B - (W + self.sl - span * k) - self.sl if k < 1 else None
+            if dx is not None and i > 0:  # dell d l banda 3la li ta7tha
+                sh = (np.clip(1 + dx / shw, 0, 1) * (dx < 0)) ** 2 * 0.45
+                out *= (1 - sh)[..., None]
+                out[..., 3] += sh
+            m = None if dx is None else np.clip(dx / bws[i] + 0.5, 0, 1)
+            if i < 2:
+                col = self.cols[i]
+                if m is None:
+                    out[:] = col
+                else:
+                    out *= (1 - m)[..., None]
+                    out += m[..., None] * col
+            else:
+                bgm = m
+        if ks[2] <= 0:
+            return out
+        # fond + daw kaytnffes + daw rtab kaydouz
+        kb = _ease((t - OT_LOGO - 0.1) / 0.6) * (1 + 0.35 * math.exp(-((t - OT_LOGO - 0.45) / 0.25) ** 2))
+        bg = self.bg + self.glow3 * kb
+        kbeam = (t - 0.9) / (OUTRO_SECONDS - 0.9)
+        if 0 < kbeam < 1:
+            p = W * 1.7 - W * 2.3 * kbeam
+            beam = np.exp(-((self.B - p) / (W * 0.22)) ** 2) * (math.sin(math.pi * kbeam) * 14)
+            bg += beam[..., None] * np.array((0.8, 0.85, 1.1), np.float32)
+        # content (camera push-in)
+        cv, head = self.content(t)
+        sc = 1 + 0.03 * _sine_io((t - OT_LOGO) / (OUTRO_SECONDS - OT_LOGO))
+        GH = self.GH
+        if sc != 1:
+            nw, nh = round(W * sc), round(GH * sc)
+            cv = cv.resize((nw, nh), Image.BICUBIC).crop(((nw - W) // 2, (nh - GH) // 2, (nw - W) // 2 + W,
+                                                          (nh - GH) // 2 + GH))
+            if head:
+                head = ((head[0] - W / 2) * sc + W / 2, (head[1] - GH / 2) * sc + GH / 2, head[2])
+        c = np.asarray(cv, np.float32) / 255
+        g0, g1 = max(0, self.g0), min(H, self.g0 + GH)
+        cs = c[g0 - self.g0:g1 - self.g0]
+        reg = bg[g0:g1] / 255
+        bg[g0:g1] = (reg * (1 - cs[..., 3:4]) + cs[..., :3] * cs[..., 3:4]) * 255
+        # streak anamorphic dahbi f ras l khatt (additive)
+        if head and head[2] > 0.02:
+            hx, hy, hk = head[0], head[1] + self.g0, head[2]
+            band = round(70 * s)
+            y0, y1 = max(0, int(hy) - band), min(H, int(hy) + band)
+            yy = np.arange(y0, y1, dtype=np.float32)[:, None] - hy
+            xx = np.arange(W, dtype=np.float32)[None, :] - hx
+            core = np.exp(-(yy / (2.0 * s)) ** 2) * np.exp(-np.abs(xx) / (W * 0.30)) * 1.3
+            halo = np.exp(-(yy / (16 * s)) ** 2) * np.exp(-np.abs(xx) / (W * 0.12)) * 0.35
+            bloom = np.exp(-(xx ** 2 + yy ** 2) / (2 * (26 * s) ** 2)) * 0.9
+            a = (core + halo + bloom) * hk * 255
+            bg[y0:y1] += a[..., None] * np.array((1.0, 0.86, 0.55), np.float32)
+        np.clip(bg, 0, 255, out=bg)
+        bg /= 255
+        if bgm is not None:  # khatt dow f 7afa d l fond (kayban m3a motion blur)
+            dx = self.B - (W + self.sl - span * ks[2]) - self.sl
+            rw = 2.2 * s + bws[2] / 2
+            rim = np.exp(-((dx - rw) / rw) ** 2) * 0.9 * min(1.0, 2.2 * s * 2 / bws[2] + 0.25)
+            bg += rim[..., None] * (np.array(GOLD_HI, np.float32) / 255 - bg)
+            out *= (1 - bgm)[..., None]
+            out[..., :3] += bg * bgm[..., None]
+            out[..., 3] += bgm
+        else:
+            out[..., :3] = bg
+            out[..., 3] = 1
         return out
-    # 2) logo jdid b animation dyalo (logo_wide_at)
-    lx, ly = o.logo_xy
-    out.alpha_composite(logo_wide_at(o.logo, t - OUTRO_LOGO_T0),
-                        (lx - round(o.logo.width * LOGO_PAD), ly - round(o.logo.height * LOGO_PAD)))
-    # 3) khatt dahbi kaytfta7 men l wost
-    k = _ease_expo((t - 1.05) / 0.5)
-    if k > 0:
-        half = round(210 * s * k)
-        ImageDraw.Draw(out).rounded_rectangle((W // 2 - half, o.line_y, W // 2 + half, o.line_y + round(5 * s)),
-                                              radius=round(3 * s), fill=(*GOLD, 255))
-    # 4) «تابعونا لكل جديد»: katkchef men l imin + tl3a sghira
-    k = _prog(t, 1.15, 1.6)
-    if k > 0:
-        tag = _wipe_any(o.tag, o.tag_span, k)
-        out.alpha_composite(tag, (0, round(18 * s * (1 - k))))
-    # 5) l site (pop)
-    k = (t - 1.35) / 0.4
-    if k > 0:
-        sc = _back(k)
-        sw, sh = o.site.size
-        nw, nh = max(1, round(sw * sc)), max(1, round(sh * sc))
-        out.alpha_composite(_alpha(o.site.resize((nw, nh), Image.LANCZOS), min(1.0, k * 3)),
-                            (o.site_xy[0] + (sw - nw) // 2, o.site_xy[1] + (sh - nh) // 2))
-    # 6) icons wa7d b wa7d
-    for i, (im, (x, y)) in enumerate(o.icons):
-        k = (t - 1.55 - i * 0.07) / 0.35
-        if k <= 0:
-            continue
-        dy = round(30 * s * (1 - _ease(k)))
-        out.alpha_composite(_alpha(im, min(1.0, k * 2.5)), (x, y + dy))
-    return out
+
+    def render(self, t: float, fps: float) -> Image.Image:
+        """Frame b motion blur (shutter 180°): moyenne d sub-frames mlli kayna 7araka sri3a."""
+        n = 3 if OT_LOGO <= t < OT_SETTLE else 1   # l bandat 3ndhom blur b l 7sab (ma7tajinch sub-frames)
+        sh = 0.5 / fps
+        acc = None
+        for j in range(n):
+            f = self.frame(max(0.0, t + ((j + 0.5) / n - 0.5) * sh) if n > 1 else t, sh / n)
+            acc = f if acc is None else acc + f
+        if n > 1:
+            acc /= n
+        a = acc[..., 3:4]
+        rgb = np.where(a > 1e-4, acc[..., :3] / np.maximum(a, 1e-4), 0)
+        px = np.concatenate([rgb, a], axis=2)
+        return Image.fromarray((np.clip(px, 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA")
 
 
-def _wipe_any(lay: Image.Image, span: tuple[float, float], k: float) -> Image.Image:
-    left, right = span
-    edge = right - (right - left) * k
-    m = _row_mask(lay.size, [(max(0, int(edge)), lay.width, 1.0)])
-    out = lay.copy()
-    out.putalpha(ImageChops.multiply(lay.getchannel("A"), m))
-    return out
+def _outro_key(W: int, H: int, fps: float) -> str:
+    import hashlib
+    h = hashlib.sha1(Path(__file__).read_bytes())
+    h.update((ASSETS / "logo_wide.png").read_bytes())
+    return f"{W}x{H}_{fps:.3f}_{h.hexdigest()[:10]}"
 
 
-def render_outro_frames(W: int, H: int, fps: float, folder: Path) -> int:
-    o = outro_layers(W, H)
-    n = math.ceil(OUTRO_ANIM_END * fps) + 1  # mor had l w9t kolchi tabet (eof_action=repeat)
+def outro_frames(W: int, H: int, fps: float) -> Path:
+    """Dossier fih o%05d.png d l outro (cache f /tmp: kaytrsem ghir mra l kol (W, H, fps, code))."""
+    folder = OUTRO_CACHE / _outro_key(W, H, fps)
+    if (folder / "done").exists():
+        return folder
+    OUTRO_CACHE.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix="tmp_", dir=OUTRO_CACHE))
+    o = Outro(W, H)
+    n = math.ceil(OUTRO_SECONDS * fps) + 1
     for i in range(n):
-        render_outro(o, i / fps).save(folder / f"o{i:05d}.png", compress_level=1)
-    return n
+        o.render(i / fps, fps).save(tmp / f"o{i:05d}.png", compress_level=1)
+    (tmp / "done").touch()
+    shutil.rmtree(folder, ignore_errors=True)
+    tmp.rename(folder)
+    for old in sorted(OUTRO_CACHE.iterdir(), key=lambda p: p.stat().st_mtime)[:-4]:  # nkhlliw ghir 4
+        shutil.rmtree(old, ignore_errors=True)
+    return folder
 
 
 # ───────────────────────── ffmpeg ─────────────────────────
@@ -1357,13 +1618,14 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
             graph = _add_overlay(graph, inputs, work / "s%05d.png", p.fps, st.x, st.y)
         amap = "0:a:0?"
         outro = outro and p.duration > 0
-        if outro:  # l video kat7bes f akhir frame, l outro fo9ha; l son kaytfada w kaytzad silence
+        if outro:  # l video kat7bes f akhir frame, l outro fo9ha (+ grain); l son kaytfada w kaytzad silence
             ow, oh = (FW, FH) if frame else (W, H)
-            render_outro_frames(ow, oh, p.fps, work)
+            folder = outro_frames(ow, oh, p.fps)
             n = 1 + inputs.count("-i")
-            inputs += ["-framerate", f"{p.fps:.5f}", "-itsoffset", f"{p.duration:.3f}", "-i", str(work / "o%05d.png")]
+            inputs += ["-framerate", f"{p.fps:.5f}", "-itsoffset", f"{p.duration:.3f}", "-i", str(folder / "o%05d.png")]
+            grain = f",noise=c0s={OUTRO_GRAIN}:c0f=t:enable='gte(t,{p.duration:.3f})'" if OUTRO_GRAIN > 0 else ""
             graph = (graph.removesuffix("[v]") + f"[x];[x]tpad=stop_mode=clone:stop_duration={OUTRO_SECONDS}[xp];"
-                     f"[xp][{n}:v]overlay=0:0:eof_action=repeat,format=yuv420p[v]")
+                     f"[xp][{n}:v]overlay=0:0:eof_action=repeat{grain},format=yuv420p[v]")
             if p.audio:
                 graph += (f";[0:a:0]afade=t=out:st={max(0.0, p.duration - 0.5):.3f}:d=0.5,"
                           f"atrim=end={p.duration:.3f},apad=whole_dur={p.duration + OUTRO_SECONDS:.3f}[a]")
