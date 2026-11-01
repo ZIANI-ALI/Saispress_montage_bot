@@ -53,6 +53,7 @@ HELP = (
     "wla «🔥 متداول» direct bla platform "
     "(katban sghira f jnab l video), w 3la l <b>outro</b> f l akhir.\n"
     "Mn ba3d l montage: «✏️ Bddel titre» w «🔁» (ghir logo ⇄ logo + titre) bla ma t3awed tsifet l video.\n"
+    "Video 9:16 / 4:5: katji ghir version frame; «📱 Version 9dima» ila bghiti l version zoom (w «🖼 Version frame» bach trje3).\n"
     "M3a l video katji <b>cover</b> (JPEG) l Reels.\n"
     "/cancel: tlghi kolchi: l montage li khddam, li f l queue, w l 3onwan li kantsenna."
 )
@@ -75,6 +76,7 @@ class Job:
     source: tuple[str, str] | None = None  # (platform, smiyt l page wla «متداول»)
     source_asked: bool = False
     outro: bool | None = None   # None: mazal ma khtarch
+    zoom: bool = False          # 9:16 / 4:5: True = version 9dima (zoom + panel), b l bouton «📱 Version 9dima»
 
 
 class Cancelled(Exception):
@@ -403,6 +405,19 @@ async def on_callback(cb: dict) -> None:
         else:
             await enqueue(job)
         return
+    if data.startswith("vz:"):  # mor l montage: version frame ⇄ version 9dima (zoom)
+        job = jobs.get(data[3:])
+        if not job or not (job.src and job.src.exists()):
+            await api("answerCallbackQuery", callback_query_id=cb["id"],
+                      text="L original ma b9ach, 3awed sifet l video.", show_alert=True)
+            return
+        if job.queued:
+            await api("answerCallbackQuery", callback_query_id=cb["id"], text="Mazal kaytmonta.")
+            return
+        job.zoom = not job.zoom
+        await api("answerCallbackQuery", callback_query_id=cb["id"])
+        await enqueue(job)
+        return
     if data.startswith("rt:"):
         job = jobs.get(data[3:])
         if not job or not (job.src and job.src.exists()):
@@ -496,8 +511,8 @@ async def process(client: TelegramClient, job: Job) -> None:
         await api("deleteMessage", chat_id=job.chat_id, message_id=status)
         await say(job.chat_id, FILL_CHOICE, reply_to=job.msg_id, buttons=fill_buttons(job.id))
         return
-    # 9:16: jouj versions (frame b animation 9bel, mn ba3d zoom + panel); 3rida: frame bo7dha
-    versions = [None] if montage.framed(src_p) else [True, False]
+    # 3rida: frame; 9:16 / 4:5: version wa7da (frame, wla zoom + panel ila tlbha b «📱 Version 9dima»)
+    versions = [None] if montage.framed(src_p) else [not job.zoom]
     chat = await msg_chat(client, job)
     t_mt, sizes = 0.0, []
     for vi, frame in enumerate(versions):
@@ -529,9 +544,13 @@ async def process(client: TelegramClient, job: Job) -> None:
                    + f"{W}×{H} · {p.fps:.0f} fps · {size_mb:.1f} MB")
         buttons = ([Button.inline("✏️ Bddel titre", data=f"rt:{job.id}".encode())] if job.with_title else []) + \
             [Button.inline("🔁 Ghir logo" if job.with_title else "🔁 Logo + titre", data=f"sw:{job.id}".encode())]
+        rows = [buttons]
+        if frame is not None:  # 9:16 / 4:5: l version lokhra 3la 7sab l 7aja
+            rows.append([Button.inline("📱 Version 9dima" if frame else "🖼 Version frame",
+                                       data=f"vz:{job.id}".encode())])
         sent = await client.send_file(
             chat, str(out), caption=caption[:1000], parse_mode=None, force_document=True, thumb=str(thumb),
-            reply_to=job.msg_id, buttons=[buttons],
+            reply_to=job.msg_id, buttons=rows,
             progress_callback=lambda d, t, tag=tag: asyncio.ensure_future(
                 tick(f"⬆️ Kansifet l video{tag}…", d / t if t else 0)))
         await client.send_file(chat, str(cover), caption="🖼 Cover (Reels → Edit cover → mn l galerie)",

@@ -35,8 +35,8 @@ b animation, **b nefs l qualité**.
   - Titre kaydkhel b animation (flèches, mn ba3d stoura kaytkchfo men l imin, ~1.2 s) w kayb9a l video kamla
     (Reels kayakhod cover mn l frame).
 - **Ghir logo:** nefs l frame (logo + `#rkn`) bla titre. Video 9:16: bla panel.
-- **Video 9:16 / 4:5:** jouj versions: 🖼 frame 9bel (video full 9:16, logo + `#rkn` l fo9 b dégradé navy, titre l t7t b animation, shadow sghir mora l ktaba) w mn ba3d 📱 l 9dima (zoom, panel b animation),
-  kol wa7da b cover dyalha. Video 4:5 / 3:4 (machi 9:16): l bot kaysowl mor tanzil: ✂️ Crop (full) wla
+- **Video 9:16 / 4:5:** version wa7da: 🖼 frame (video full 9:16, logo + `#rkn` l fo9 b dégradé navy, titre l t7t b animation, shadow sghir mora l ktaba).
+  Bouton «📱 Version 9dima» ta7t l video → l version zoom (panel b animation), w «🖼 Version frame» bach trje3; kol wa7da b cover dyalha. Video 4:5 / 3:4 (machi 9:16): l bot kaysowl mor tanzil: ✂️ Crop (full) wla
   🖼 B cadre (video f l wost b fond mdbbel, b7al 16:9).
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Source (ikhtiyari):** sghira f jnab l issar (~35% men l fo9, b7al l medias): icon d l platform l fo9 | smiyt l page
@@ -45,9 +45,10 @@ b animation, **b nefs l qualité**.
 - **Animation d l logo (~1.4 s, f ga3 l versions):** l 7rf kaytktb men l imin l l issar (7afa mayla rtba b daw dahbi)
   m3a zoom kayrtta7 (1.12 → 1), mn ba3d mrab3at PRESS kaytl3o wa7d b wa7d (pop), w f l akhir lam3a r9i9a 3la l 7rf.
   F frame: l cadre d `#rkn` kaytfta7 men l issar, «#» kaybrez, w l ktaba katkchef.
-- **Outro (ikhtiyari, ~2.8 s, f ga3 l versions):** l video kat7bes f akhir frame, bandat mayliin (dahbi, navy) kaygttiwha men
-  l imin, mn ba3d l logo b animation dyalo, khatt dahbi, «تابعونا لكل جديد», `saispress.com` w icons d l réseaux.
-  L son kaytfada f akhir l video. `OUTRO_SITE` bach tbddel l site.
+- **Outro (ikhtiyari, ~3.4 s, f ga3 l versions):** l video kat7bes f akhir frame, bandat mayliin (dahbi, navy, fond) b motion blur
+  kaygttiwha men l imin; logo jdid (`assets/logo_wide.png`): l khatt ta7ti kaytktb b 7afa dahbiya + streak, snan kaytl3o,
+  n9at, PRESS, lam3a; mn ba3d khatt dahbi, «تابعونا لكل جديد», pill `saispress.com` w icons f dwayr. Fond navy b daw, camera
+  push-in w grain (`OUTRO_GRAIN`, 0 = bla). L son kaytfada f akhir l video (bla son f l outro). `OUTRO_SITE` bach tbddel l site.
 - **Titre f frame:** shadow sghir mora l ktaba bo7dha (machi dégradé).
 - **Titre:** panel navy + khatt gold + pill d l rkn.
   - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.
