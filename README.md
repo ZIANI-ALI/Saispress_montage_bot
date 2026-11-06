@@ -22,7 +22,9 @@ b animation, **b nefs l qualité**.
    Hadchi kaykhdem ghir f nefs l run, ya3ni ~5 sa3at men ba3d l montage.
 
 **🔗 Link:** sifet ghir link d l video (Instagram, TikTok, X, Facebook, YouTube…). L bot kaytnzelha (yt-dlp, a7san qualité),
-kaysifetha m3a titre w description d l post, mn ba3d kaybda nefs l flow (🏷 / 📰 → titre katktbo nta → source → outro).
+w Gemini (free tier, Secret `GEMINI_API_KEY`) kayktb mn l post: **titre** (kaydkhel f l montage) w **description** l Instagram
+(message bo7dha, copier direct). Mn ba3d: source → outro → montage. «✏️ Bddel titre» mor l montage ila bghiti tbddlo.
+Bla key / quota / ma3loumat na9sa: l bot kaygoul w kaysowl 🏷 / 📰 (titre katktbo nta). Models: Variable `GEMINI_MODELS` (ikhtiyari).
 Instagram / YouTube / X ymken ytlbo login men serveurs d GitHub: zid Secret `YTDLP_COOKIES` (contenu d `cookies.txt`, format Netscape).
 
 `/help`: l m3awna · `/cancel`: tlghi kolchi (l montage li khddam, li f l queue, w l 3onwan li kaytsenna).
