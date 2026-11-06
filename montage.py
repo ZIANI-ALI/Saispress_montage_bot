@@ -775,7 +775,7 @@ def _gradient(y0: int, y1: int, a0: int, a1: int) -> Image.Image:
     return lay
 
 
-TITLE_STROKE = 4  # full: strock navy 7wl titre (yban 3la fond byed), bla shadow
+TITLE_STROKE = 2  # full: strock navy 7wl titre (yban 3la fond byed), bla shadow
 FULL_TOP = round(768 * FH / 1280)  # full: titre f nefs blasat l panel d version zoom (768/1280 d l exemple)
 
 
