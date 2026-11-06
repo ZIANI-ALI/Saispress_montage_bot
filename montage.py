@@ -759,6 +759,7 @@ class FrameLayers:
     t_out: float | None = None      # full: waqt khrja d titre (None: kayb9a 7tta l akhir)
     logo: tuple | None = None       # (Image, (x, y)) d l logo f l header
     tag: tuple | None = None        # (box, sq, text, (x0, x1), (sq_x0, sq_y0, sq_x1, sq_y1)): #rkn
+    hdr_dy: int = 0                 # header (logo + #rkn) mhbet b had l 9dar
 
 
 def _layer() -> Image.Image:
@@ -798,13 +799,14 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     lg = Image.open(ASSETS / "logo.png").convert("RGBA")
     lw = 150  # nefs 7ajm d l logo f version zoom (logo_image: 100 * 1080/720)
     lg = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
-    logo = (lg, (FW - 60 - lw, 291 - lg.height // 2))  # f nefs l khatt m3a #rkn (b animation: render_header)
+    dy = HDR_CADRE_DY if full and (vw, vh) != (FW, FH) else 0  # 4:5 cadre: header mhbet chwiya
+    logo = (lg, (FW - 60 - lw, 291 + dy - lg.height // 2))  # f nefs l khatt m3a #rkn (b animation: render_header)
     tag_f = _font(FONT_PILL, 40)
     tag = f"{category}" if category else "Saispress"
     tw = _width(tag, tag_f)
     ph = 66
     sq = ph - 12
-    x0, y0 = 60, 258
+    x0, y0 = 60, 258 + dy
     x1 = x0 + 24 + tw + 18 + sq + 6
     box_l, sq_l, txt_l = _layer(), _layer(), _layer()
     ImageDraw.Draw(box_l).rounded_rectangle((x0, y0, x1, y0 + ph), radius=14, fill=(*NAVY, 235),
@@ -816,7 +818,7 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
     ImageDraw.Draw(txt_l).text((x1 - 6 - sq - 18, y0 + ph / 2 + 3), tag, font=tag_f, fill=WHITE, anchor="rm",
                                direction="rtl")
     top = vy + vh
-    fl = FrameLayers(im, None, None, None, [], top, logo=logo, tag=(box_l, sq_l, txt_l, (x0, x1), sqb))
+    fl = FrameLayers(im, None, None, None, [], top, logo=logo, tag=(box_l, sq_l, txt_l, (x0, x1), sqb), hdr_dy=dy)
     if not title:
         return fl
     if urgent:  # b7al l akhbar 3ajila: block 7mer ta7t l video, label «عاجل», titre byed
@@ -891,7 +893,8 @@ def _soft_shadow(lay: Image.Image, blur: int = 5, dy: int = 3, k: float = 0.6) -
     return out
 
 
-HDR_Y0, HDR_Y1 = 200, 400   # l header (logo + #rkn) f had l bande
+HDR_Y0, HDR_Y1 = 200, 400   # l header (logo + #rkn) f had l bande (+ fl.hdr_dy)
+HDR_CADRE_DY = 70            # 4:5 cadre: header mhbet b had l 9dar
 HDR_END = max(LOGO_END, 0.85)
 
 
@@ -928,7 +931,7 @@ def render_header(fl: FrameLayers, t: float) -> Image.Image:
 def render_header_frames(fl: FrameLayers, fps: float, folder: Path) -> int:
     n = math.ceil(HDR_END * fps) + 2
     for i in range(n):
-        render_header(fl, i / fps).crop((0, HDR_Y0, FW, HDR_Y1)).save(folder / f"h{i:05d}.png", compress_level=1)
+        render_header(fl, i / fps).crop((0, HDR_Y0 + fl.hdr_dy, FW, HDR_Y1 + fl.hdr_dy)).save(folder / f"h{i:05d}.png", compress_level=1)
     return n
 
 
@@ -1608,7 +1611,7 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
                 inputs += ["-framerate", f"{p.fps:.5f}", "-i", str(work / "t%05d.png")]
             graph = build_filter_framed(p, box, fl.top if fl.lines else None)
             render_header_frames(fl, p.fps, work)  # logo + #rkn b animation
-            graph = _add_overlay(graph, inputs, work / "h%05d.png", p.fps, 0, HDR_Y0)
+            graph = _add_overlay(graph, inputs, work / "h%05d.png", p.fps, 0, HDR_Y0 + fl.hdr_dy)
         else:
             ov = build_overlay(W, H, title, category, p.duration) if title else None
             lg, lx, ly = logo_image(W)
