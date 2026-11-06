@@ -21,6 +21,10 @@ b animation, **b nefs l qualité**.
    M3a kol video katji **cover** (JPEG 1080×1920 b nefs l design) l Reels: «Edit cover» → mn l galerie.
    Hadchi kaykhdem ghir f nefs l run, ya3ni ~5 sa3at men ba3d l montage.
 
+**🔗 Link:** sifet ghir link d l video (Instagram, TikTok, X, Facebook, YouTube…). L bot kaytnzelha (yt-dlp, a7san qualité),
+kaysifetha m3a titre w description d l post, mn ba3d kaybda nefs l flow (🏷 / 📰 → titre katktbo nta → source → outro).
+Instagram / YouTube / X ymken ytlbo login men serveurs d GitHub: zid Secret `YTDLP_COOKIES` (contenu d `cookies.txt`, format Netscape).
+
 `/help`: l m3awna · `/cancel`: tlghi kolchi (l montage li khddam, li f l queue, w l 3onwan li kaytsenna).
 
 ## Chno kaydir l montage
@@ -35,9 +39,9 @@ b animation, **b nefs l qualité**.
   - Titre kaydkhel b animation (flèches, mn ba3d stoura kaytkchfo men l imin, ~1.2 s) w kayb9a l video kamla
     (Reels kayakhod cover mn l frame).
 - **Ghir logo:** nefs l frame (logo + `#rkn`) bla titre. Video 9:16: bla panel.
-- **Video 9:16 / 4:5:** version wa7da: 🖼 frame (video full 9:16, logo + `#rkn` l fo9 b dégradé navy, titre l t7t b animation, shadow sghir mora l ktaba).
+- **Video 9:16 / 4:5:** version wa7da: 🖼 frame (video full 9:16, logo + `#rkn` l fo9 b dégradé navy, titre l t7t b animation, strock navy r9i9 7wl l ktaba).
   Bouton «📱 Version 9dima» ta7t l video → l version zoom (panel b animation), w «🖼 Version frame» bach trje3; kol wa7da b cover dyalha. Video 4:5 / 3:4 (machi 9:16): l bot kaysowl mor tanzil: ✂️ Crop (full) wla
-  🖼 B cadre (video f l wost b fond mdbbel, b7al 16:9).
+  🖼 B cadre (video 3amra jnab b 3ard kaml, f l wost, fond mdbbel fo9 w ta7t; logo + `#rkn` mhbtin chwiya, titre fo9 l video).
 - **Logo:** l fo9 3la l imin, l video kamla.
 - **Source (ikhtiyari):** sghira f jnab l issar (~35% men l fo9, b7al l medias): icon d l platform l fo9 | smiyt l page
   wla «متداول», ktaba byda 3amoudiya (kat9ra men l t7t l l fo9) b shadow, bla fond. Dkhla: khatt dahbi kaykber w kaymsa7
@@ -49,7 +53,7 @@ b animation, **b nefs l qualité**.
   kaygttiwha men l imin; logo jdid (`assets/logo_wide.png`): l khatt ta7ti kaytktb b 7afa dahbiya + streak, snan kaytl3o,
   n9at, PRESS, lam3a; mn ba3d khatt dahbi, «تابعونا لكل جديد», pill `saispress.com` w icons f dwayr. Fond navy b daw, camera
   push-in w grain (`OUTRO_GRAIN`, 0 = bla). L son kaytfada f akhir l video (bla son f l outro). `OUTRO_SITE` bach tbddel l site.
-- **Titre f frame:** shadow sghir mora l ktaba bo7dha (machi dégradé).
+- **Titre f frame:** 16:9: shadow sghir mora l ktaba. 9:16 / 4:5 (titre fo9 l video): strock navy r9i9 (`TITLE_STROKE`), yban 7tta 3la fond byed.
 - **Titre:** panel navy + khatt gold + pill d l rkn.
   - Dkhla ~0.45s: panel f 3 tba9at kaymsa7o men l issar l l imin, l titre kayban m3a tba9a lkhra.
   - Kaybqa `TITLE_SECONDS` (4.2s).

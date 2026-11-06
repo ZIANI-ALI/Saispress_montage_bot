@@ -74,6 +74,7 @@ jobs:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           VIDEO_ALLOWED_IDS: ${{ vars.VIDEO_ALLOWED_IDS }}
+          YTDLP_COOKIES: ${{ secrets.YTDLP_COOKIES }}
           RUN_MINUTES: ${{ inputs.minutes || vars.RUN_MINUTES || '330' }}
           MONTAGE_PRESET: ${{ vars.MONTAGE_PRESET || 'slow' }}
           MONTAGE_CRF: ${{ vars.MONTAGE_CRF || '17' }}

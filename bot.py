@@ -55,6 +55,8 @@ HELP = (
     "Mn ba3d l montage: «✏️ Bddel titre» w «🔁» (ghir logo ⇄ logo + titre) bla ma t3awed tsifet l video.\n"
     "Video 9:16 / 4:5: katji ghir version frame; «📱 Version 9dima» ila bghiti l version zoom (w «🖼 Version frame» bach trje3).\n"
     "M3a l video katji <b>cover</b> (JPEG) l Reels.\n"
+    "🔗 <b>Link</b>: sifet ghir link d l video (Instagram, TikTok, X, Facebook, YouTube…): "
+    "l bot kaytnzelha w kaysifetha m3a titre w description d l post, mn ba3d kaybda l montage.\n"
     "/cancel: tlghi kolchi: l montage li khddam, li f l queue, w l 3onwan li kantsenna."
 )
 
@@ -77,6 +79,7 @@ class Job:
     source_asked: bool = False
     outro: bool | None = None   # None: mazal ma khtarch
     zoom: bool = False          # 9:16 / 4:5: True = version 9dima (zoom + panel), b l bouton «📱 Version 9dima»
+    url: str | None = None      # video jat b link (yt-dlp)
 
 
 class Cancelled(Exception):
@@ -90,6 +93,7 @@ queue: asyncio.Queue[str] = asyncio.Queue()
 busy: str | None = None
 busy_task: asyncio.Task | None = None
 _ids = itertools.count(1)
+tg: TelegramClient | None = None  # MTProto (main): irsal d l videos d links
 
 
 # ───────────────────────── Bot API ─────────────────────────
@@ -153,6 +157,15 @@ def video_of(msg: dict) -> tuple[str, int] | None:
               or re.search(r"\.(mp4|mov|m4v|mkv|webm|avi|3gp)$", d.get("file_name", ""), re.I)):
         return d.get("file_name") or "video.mp4", d.get("file_size", 0)
     return None
+
+
+URL_RE = re.compile(r"https?://\S+", re.I)
+
+
+def link_of(text: str) -> str | None:
+    """Link d video ila l message fih link (l lowel)."""
+    m = URL_RE.search(text or "")
+    return m.group(0).rstrip(").,;!?»\"'") if m else None
 
 
 def esc(t: str) -> str:
@@ -271,6 +284,15 @@ async def on_message(msg: dict) -> None:
         await say(chat_id, CHOICE, reply_to=msg["message_id"], buttons=choice_buttons(job.id))
         return
 
+    url = link_of(text)
+    if url:  # link: tanzil (yt-dlp) → video + titre + description → flow d montage
+        waiting_title.pop(chat_id, None)
+        waiting_source.pop(chat_id, None)
+        job = Job(f"j{next(_ids)}", chat_id, msg["message_id"], "video.mp4", url=url)
+        jobs[job.id] = job
+        asyncio.create_task(fetch_link(job))
+        return
+
     if text and chat_id in waiting_source:
         job = jobs.get(waiting_source.pop(chat_id))
         if not job or not job.source:
@@ -301,7 +323,7 @@ async def on_message(msg: dict) -> None:
         return
 
     if text:
-        await say(chat_id, "Sifet video (ka Fichier) m3a l 3onwan f caption. /help")
+        await say(chat_id, "Sifet video (ka Fichier) m3a l 3onwan f caption, wla link d l video. /help")
 
 
 async def on_callback(cb: dict) -> None:
@@ -456,6 +478,100 @@ async def poll(deadline: float) -> None:
                 log.exception("[update] fchel")
     if offset:  # n2ekdo l updates li t9raw bach ma yt3awdouch f run jay
         await api("getUpdates", offset=offset, timeout=0)
+
+
+# ───────────────────────── links (yt-dlp) ─────────────────────────
+
+MAX_BYTES = 2000 * 1024**2
+COOKIES = os.environ.get("YTDLP_COOKIES", "")  # ikhtiyari: cookies.txt (Netscape) l Instagram / X ila tlbo login
+
+
+class _Quiet:
+    def debug(self, msg): pass
+    def info(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): pass
+
+
+def ytdlp_fetch(url: str, folder: Path) -> tuple[Path, dict]:
+    """Kaytnzel l video (a7san qualité, mp4) → (fichier, info)."""
+    import yt_dlp
+    folder.mkdir(parents=True, exist_ok=True)
+    opts = {
+        "outtmpl": str(folder / "src.%(ext)s"),
+        "format": "bv*[vcodec^=avc1]+ba[acodec^=mp4a]/bv*+ba/b",
+        "format_sort": ["res:1920", "fps", "vcodec:avc1", "acodec:mp4a"],
+        "merge_output_format": "mp4",
+        "noplaylist": True,
+        "playlist_items": "1",
+        "max_filesize": MAX_BYTES,
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+        "socket_timeout": 30,
+        "retries": 3,
+        "logger": _Quiet(),  # logs d Actions public: ma ntb3ouch l URL / errors (katmchi l Telegram)
+    }
+    if COOKIES.strip():
+        cf = folder / "cookies.txt"
+        cf.write_text(COOKIES if COOKIES.endswith("\n") else COOKIES + "\n")
+        opts["cookiefile"] = str(cf)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            if info.get("_type") == "playlist" and info.get("entries"):  # carrousel: l video lowla
+                info = next(e for e in info["entries"] if e)
+    finally:
+        if COOKIES.strip():
+            (folder / "cookies.txt").unlink(missing_ok=True)
+    files = sorted((f for f in folder.glob("src.*") if f.suffix not in (".part", ".ytdl", ".txt")),
+                   key=lambda f: f.stat().st_size, reverse=True)
+    if not files:
+        raise RuntimeError("ma tnzlat 7tta video")
+    return files[0], info
+
+
+def _clip(t: str, n: int) -> str:
+    t = (t or "").strip()
+    return t if len(t) <= n else t[: n - 1].rstrip() + "…"
+
+
+async def fetch_link(job: Job) -> None:
+    """Link → tanzil → video (m3a titre w description d l post) → «Chno ndir l had l video?»."""
+    status = await say(job.chat_id, "🔗 Kantnzel l video men l link…", reply_to=job.msg_id)
+    try:
+        src, info = await asyncio.to_thread(ytdlp_fetch, job.url, WORK / job.id)
+        if src.stat().st_size > MAX_BYTES:
+            raise RuntimeError("l video kbira bzaf (l a9sa 2 GB)")
+        p = await asyncio.to_thread(montage.probe, src)
+        job.src, job.filename = src, src.name
+        await edit(job.chat_id, status, "⬆️ Kansifet l video…")
+        thumb = await asyncio.to_thread(montage.thumbnail, src, src.with_name("link_thumb.jpg"),
+                                        min(1.0, p.duration / 2))
+        from telethon.tl.types import DocumentAttributeVideo
+        site = info.get("extractor_key") or info.get("extractor") or ""
+        who = info.get("uploader") or info.get("channel") or info.get("uploader_id") or ""
+        head = " · ".join(filter(None, (site, who and f"@{who.lstrip('@')}" if site != "Youtube" else who)))
+        cap = f"🔗 {head}\n{p.width}×{p.height} · {p.fps:.0f} fps · {src.stat().st_size / 1024**2:.1f} MB"
+        await tg.send_file(await msg_chat(tg, job), str(src), caption=cap[:1000], parse_mode=None,
+                           thumb=str(thumb), reply_to=job.msg_id, supports_streaming=True,
+                           attributes=[DocumentAttributeVideo(round(p.duration), p.width, p.height,
+                                                              supports_streaming=True)])
+        thumb.unlink(missing_ok=True)
+        title, desc = (info.get("title") or "").strip(), (info.get("description") or "").strip()
+        if title and desc and (desc.startswith(title.rstrip("…. ")) or title.startswith(("Video by", "Video from"))):
+            title = ""  # Instagram / TikTok: titre = bdya d description wla «Video by …»
+        text = "\n\n".join(filter(None, (title and f"📌 <b>{esc(_clip(title, 300))}</b>",
+                                          desc and f"📝 {esc(_clip(desc, 3500))}")))
+        if text:
+            await say(job.chat_id, text, reply_to=job.msg_id)
+        await api("deleteMessage", chat_id=job.chat_id, message_id=status)
+        await say(job.chat_id, CHOICE, reply_to=job.msg_id, buttons=choice_buttons(job.id))
+    except Exception as e:
+        log.warning("[link %s] fchel: %s", job.id, type(e).__name__)
+        err = re.sub(r"\x1b\[[0-9;]*m", "", str(e)).replace("ERROR: ", "")
+        await edit(job.chat_id, status, f"❌ Tanzil fchel: {esc(err)[:300]}")
+        jobs.pop(job.id, None)
 
 
 # ───────────────────────── khedma ─────────────────────────
@@ -613,8 +729,10 @@ async def main() -> None:
         await api("deleteWebhook")
     await api("setMyCommands", commands=[{"command": "help", "description": "Kifach nkhdem b l bot"},
                                          {"command": "cancel", "description": "Lghi kolchi (montage, queue, 3onwan)"}])
+    global tg
     client = TelegramClient(StringSession(), API_ID, API_HASH, receive_updates=False)
     await client.start(bot_token=TOKEN)
+    tg = client
     log.info("[start] @%s · %d user · %.0f d9i9a", me["username"] if me else "?", len(ALLOWED),
              (deadline - time.time()) / 60)
     w = asyncio.create_task(worker(client))
