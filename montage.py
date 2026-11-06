@@ -729,8 +729,11 @@ def urgent_cat(category: str | None) -> bool:
 
 
 def video_box(p: Probe) -> tuple[int, int, int, int]:
-    """(x, y, w, h) d l video f l frame."""
+    """(x, y, w, h) d l video f l frame. 4:5... (cadre): 3amra jnab (3ard kaml), f l wost, fond mdbbel fo9 w ta7t."""
     w, h = FW, _even(FW * p.height / p.width)
+    if not framed(p):
+        h = min(h, FH)
+        return 0, (FH - h) // 2, w, h
     if h > VID_MAX_H:
         w, h = _even(VID_MAX_H * p.width / p.height), VID_MAX_H
     y = max(VID_MIN_TOP, min(VID_TOP, TEXT_MAX_Y - TITLE_ROOM - h))
@@ -777,11 +780,14 @@ FULL_TOP = round(768 * FH / 1280)  # full: titre f nefs blasat l panel d version
 
 def frame_layers(box: tuple[int, int, int, int], title: str | None, category: str | None,
                  full: bool = False) -> FrameLayers:
-    """full: video 9:16 3amra l cadre (bla fond mdbbel); header (b dégradé navy) w titre (bla shadow) fo9ha."""
+    """full: titre fo9 l video (9:16 / 4:5): header (b dégradé navy) w titre (b halo k7el) fo9ha.
+    Ila box machi l cadre kaml (4:5 cadre): tint navy 3la l fond mdbbel (fo9 w ta7t l video)."""
     vx, vy, vw, vh = box
     urgent = urgent_cat(category)
-    if full:  # dégradé navy ghir fo9 (header); titre b shadow sghir mora l ktaba (_soft_shadow)
-        im = _gradient(0, 560, 170, 0)
+    if full:  # dégradé navy ghir fo9 (header); titre b halo mora l ktaba (_halo)
+        im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
+        ImageDraw.Draw(im).rectangle((vx, vy, vx + vw - 1, vy + vh - 1), fill=(0, 0, 0, 0))
+        im.alpha_composite(_gradient(0, 560, 170, 0))
     else:
         im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
         ImageDraw.Draw(im).rectangle((vx, vy, vx + vw - 1, vy + vh - 1), fill=(0, 0, 0, 0))  # l video bla tint
@@ -863,7 +869,7 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
         left = right - _width(ln, fnt)
         d.rectangle((left, uy, right, uy + 5), fill=(*GOLD, 255))
         d.ellipse((right - 4, uy - 4, right + 10, uy + 9), fill=(*GOLD, 255))
-        fl.lines.append((_soft_shadow(lay), (left - 4, right + 12)))
+        fl.lines.append((_halo(lay) if full else _soft_shadow(lay), (left - 4, right + 12)))
     return fl
 
 
@@ -880,6 +886,23 @@ def _soft_shadow(lay: Image.Image, blur: int = 5, dy: int = 3, k: float = 0.6) -
     out = _layer()
     out.paste(sh, (x0, y0 + dy))
     out.alpha_composite(lay)
+    return out
+
+
+def _halo(lay: Image.Image) -> Image.Image:
+    """Titre fo9 l video: shadow sghir + halo k7el wase3 mora l ktaba (yban 7tta 3la fond byed), bla dégradé."""
+    bb = lay.getbbox()
+    if not bb:
+        return lay
+    m = 60
+    x0, y0, x1, y1 = max(0, bb[0] - m), max(0, bb[1] - m), min(FW, bb[2] + m), min(FH, bb[3] + m)
+    a = lay.crop((x0, y0, x1, y1)).getchannel("A")
+    glow = a.filter(ImageFilter.MaxFilter(15)).filter(ImageFilter.GaussianBlur(18)).point(lambda v: min(255, int(v * 1.1)))
+    sh = Image.new("RGBA", (x1 - x0, y1 - y0), (*NAVY, 0))
+    sh.putalpha(glow)
+    out = _layer()
+    out.paste(sh, (x0, y0))
+    out.alpha_composite(_soft_shadow(lay, blur=4, dy=3, k=0.9))
     return out
 
 
@@ -1588,8 +1611,8 @@ def montage(src: Path, dst: Path, title: str, category: str | None = None,
     work = Path(tempfile.mkdtemp(prefix="ov_"))
     try:
         if frame:
-            full = not framed(p) and fill  # 9:16 / 4:5 (crop): l video 3amra l cadre
-            box = (0, 0, FW, FH) if full else video_box(p)
+            full = not framed(p)  # 9:16 / 4:5: titre fo9 l video
+            box = (0, 0, FW, FH) if full and fill else video_box(p)  # crop: 3amra l cadre; cadre: 3ard kaml
             fl = frame_layers(box, title or None, category, full)
             if full and fl.lines:  # titre fo9 l video: kaykhrej b animation b7al version zoom
                 fl.t_out = title_out(p.duration)
