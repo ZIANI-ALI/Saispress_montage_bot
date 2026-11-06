@@ -894,7 +894,7 @@ def _soft_shadow(lay: Image.Image, blur: int = 5, dy: int = 3, k: float = 0.6) -
 
 
 HDR_Y0, HDR_Y1 = 200, 400   # l header (logo + #rkn) f had l bande (+ fl.hdr_dy)
-HDR_CADRE_DY = 70            # 4:5 cadre: header mhbet b had l 9dar
+HDR_CADRE_DY = 110           # 4:5 cadre: header mhbet b had l 9dar
 HDR_END = max(LOGO_END, 0.85)
 
 
