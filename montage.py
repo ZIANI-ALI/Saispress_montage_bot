@@ -775,16 +775,17 @@ def _gradient(y0: int, y1: int, a0: int, a1: int) -> Image.Image:
     return lay
 
 
+TITLE_STROKE = 4  # full: strock navy 7wl titre (yban 3la fond byed), bla shadow
 FULL_TOP = round(768 * FH / 1280)  # full: titre f nefs blasat l panel d version zoom (768/1280 d l exemple)
 
 
 def frame_layers(box: tuple[int, int, int, int], title: str | None, category: str | None,
                  full: bool = False) -> FrameLayers:
-    """full: titre fo9 l video (9:16 / 4:5): header (b dégradé navy) w titre (b halo k7el) fo9ha.
+    """full: titre fo9 l video (9:16 / 4:5): header (b dégradé navy) w titre (b strock navy) fo9ha.
     Ila box machi l cadre kaml (4:5 cadre): tint navy 3la l fond mdbbel (fo9 w ta7t l video)."""
     vx, vy, vw, vh = box
     urgent = urgent_cat(category)
-    if full:  # dégradé navy ghir fo9 (header); titre b halo mora l ktaba (_halo)
+    if full:  # dégradé navy ghir fo9 (header); titre b strock navy (TITLE_STROKE)
         im = Image.new("RGBA", (FW, FH), (*NAVY, 140))
         ImageDraw.Draw(im).rectangle((vx, vy, vx + vw - 1, vy + vh - 1), fill=(0, 0, 0, 0))
         im.alpha_composite(_gradient(0, 560, 170, 0))
@@ -864,12 +865,13 @@ def frame_layers(box: tuple[int, int, int, int], title: str | None, category: st
         lay = _layer()
         d = ImageDraw.Draw(lay)
         ty = y + i * lh
-        d.text((right, ty), ln, font=fnt, fill=WHITE, anchor="ra", direction="rtl")
+        d.text((right, ty), ln, font=fnt, fill=WHITE, anchor="ra", direction="rtl",
+               **({"stroke_width": TITLE_STROKE, "stroke_fill": (*NAVY, 255)} if full else {}))
         uy = ty + asc + desc + 4  # khatt dahbi ta7t kol satr (b7al l exemple)
         left = right - _width(ln, fnt)
         d.rectangle((left, uy, right, uy + 5), fill=(*GOLD, 255))
         d.ellipse((right - 4, uy - 4, right + 10, uy + 9), fill=(*GOLD, 255))
-        fl.lines.append((_halo(lay) if full else _soft_shadow(lay), (left - 4, right + 12)))
+        fl.lines.append((lay if full else _soft_shadow(lay), (left - 4 - TITLE_STROKE, right + 12)))
     return fl
 
 
@@ -886,23 +888,6 @@ def _soft_shadow(lay: Image.Image, blur: int = 5, dy: int = 3, k: float = 0.6) -
     out = _layer()
     out.paste(sh, (x0, y0 + dy))
     out.alpha_composite(lay)
-    return out
-
-
-def _halo(lay: Image.Image) -> Image.Image:
-    """Titre fo9 l video: shadow sghir + halo k7el wase3 mora l ktaba (yban 7tta 3la fond byed), bla dégradé."""
-    bb = lay.getbbox()
-    if not bb:
-        return lay
-    m = 60
-    x0, y0, x1, y1 = max(0, bb[0] - m), max(0, bb[1] - m), min(FW, bb[2] + m), min(FH, bb[3] + m)
-    a = lay.crop((x0, y0, x1, y1)).getchannel("A")
-    glow = a.filter(ImageFilter.MaxFilter(15)).filter(ImageFilter.GaussianBlur(18)).point(lambda v: min(255, int(v * 1.1)))
-    sh = Image.new("RGBA", (x1 - x0, y1 - y0), (*NAVY, 0))
-    sh.putalpha(glow)
-    out = _layer()
-    out.paste(sh, (x0, y0))
-    out.alpha_composite(_soft_shadow(lay, blur=4, dy=3, k=0.9))
     return out
 
 
