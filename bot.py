@@ -94,6 +94,7 @@ class Cancelled(Exception):
 jobs: dict[str, Job] = {}
 waiting_title: dict[int, str] = {}  # chat_id -> job_id li kantsennaw lih l 3onwan
 waiting_source: dict[int, str] = {}  # chat_id -> job_id li kantsennaw lih smiyt l page
+waiting_cat: dict[int, str] = {}  # chat_id -> job_id li kantsennaw lih rkn mktoub (🏷 Bddel rkn → ✍️)
 queue: asyncio.Queue[str] = asyncio.Queue()
 busy: str | None = None
 busy_task: asyncio.Task | None = None
@@ -210,7 +211,9 @@ def platform_buttons(job_id: str) -> list:
 
 def category_buttons(job_id: str) -> list:
     b = [{"text": c, "callback_data": f"rk:{job_id}:{i}"} for i, c in enumerate(CATEGORIES)]
-    return [b[i:i + 3] for i in range(0, len(b), 3)] + [[{"text": "Saispress (bla rkn)", "callback_data": f"rk:{job_id}:n"}]]
+    return ([[{"text": "🔴 عاجل", "callback_data": f"rk:{job_id}:u"}]] + [b[i:i + 3] for i in range(0, len(b), 3)]
+            + [[{"text": "✍️ Kteb rkn", "callback_data": f"rk:{job_id}:w"},
+                {"text": "Saispress (bla rkn)", "callback_data": f"rk:{job_id}:n"}]])
 
 
 OUTRO_CHOICE = "🎞 Nzid l outro f l akhir?"
@@ -274,6 +277,7 @@ async def on_message(msg: dict) -> None:
     if text == "/cancel":
         waiting_title.pop(chat_id, None)
         waiting_source.pop(chat_id, None)
+        waiting_cat.pop(chat_id, None)
         n = cancel_all(chat_id)
         await say(chat_id, f"✔️ Tlgha ({n} video)." if n else "✔️ Tlgha.")
         return
@@ -297,6 +301,7 @@ async def on_message(msg: dict) -> None:
     if url:  # link: tanzil (yt-dlp) → video + titre + description → flow d montage
         waiting_title.pop(chat_id, None)
         waiting_source.pop(chat_id, None)
+        waiting_cat.pop(chat_id, None)
         job = Job(f"j{next(_ids)}", chat_id, msg["message_id"], "video.mp4", url=url)
         jobs[job.id] = job
         asyncio.create_task(fetch_link(job))
@@ -314,6 +319,20 @@ async def on_message(msg: dict) -> None:
         job.source = (job.source[0], name)
         await say(chat_id, f"📹 Source: <b>{esc(job.source[0])} | {esc(name)}</b>")
         await proceed(job)
+        return
+
+    if text and chat_id in waiting_cat:  # rkn mktoub (🏷 Bddel rkn → ✍️ Kteb rkn) → montage jdid
+        job = jobs.get(waiting_cat.pop(chat_id))
+        if not job or job.queued or not (job.src and job.src.exists()):
+            return
+        cat = montage.clean_title(text.strip().lstrip("#").replace("_", " ")).strip()
+        if not cat or len(cat) > 25:
+            waiting_cat[chat_id] = job.id
+            await say(chat_id, "❌ Rkn khawi wla twil bzaf (a9sa 25 7arf), 3awed.")
+            return
+        job.category = cat
+        await say(chat_id, f"🏷 Rkn → <b>#{esc(cat)}</b>")
+        await enqueue(job)
         return
 
     if text and chat_id in waiting_title:
@@ -464,7 +483,13 @@ async def on_callback(cb: dict) -> None:
             await say(chat_id, f"🏷 Khtar rkn (daba: <b>#{esc(job.category or 'Saispress')}</b>):",
                       buttons=category_buttons(job.id))
             return
-        job.category = None if parts[2] == "n" else CATEGORIES[int(parts[2])]
+        if parts[2] == "w":
+            waiting_cat[chat_id] = job.id
+            await api("editMessageText", chat_id=chat_id, message_id=cb["message"]["message_id"], parse_mode="HTML",
+                      text="✍️ Kteb smiyt rkn (b7al <code>#فن</code> wla <code>مغاربة العالم</code>):")
+            return
+        waiting_cat.pop(chat_id, None)
+        job.category = {"n": None, "u": "عاجل"}.get(parts[2]) if parts[2] in ("n", "u") else CATEGORIES[int(parts[2])]
         await api("editMessageText", chat_id=chat_id, message_id=cb["message"]["message_id"], parse_mode="HTML",
                   text=f"🏷 Rkn → <b>#{esc(job.category or 'Saispress')}</b>")
         await enqueue(job)

@@ -23,7 +23,7 @@ b animation, **b nefs l qualité**.
 
 **🔗 Link:** sifet ghir link d l video (Instagram, TikTok, X, Facebook, YouTube…). L bot kaytnzelha (yt-dlp, a7san qualité),
 w Gemini (free tier, Secret `GEMINI_API_KEY`) kayktb mn l post: **titre** (kaydkhel f l montage) w **description** l Instagram
-(message bo7dha, copier direct), w **rkn** men lista d news bot (سياسة، اقتصاد، مجتمع، حوادث، رياضة، دولي، ثقافة، صحة، تعليم، طقس، تكنولوجيا، فن). Mn ba3d: source → outro → montage. Mor l montage: «✏️ Bddel titre» w «🏷 Bddel rkn» (lista d arkan → montage jdid).
+(message bo7dha, copier direct), w **rkn** men lista d news bot (سياسة، اقتصاد، مجتمع، حوادث، رياضة، دولي، ثقافة، صحة، تعليم، طقس، تكنولوجيا، فن). Mn ba3d: source → outro → montage. Mor l montage: «✏️ Bddel titre» w «🏷 Bddel rkn» (🔴 عاجل, lista d arkan, wla ✍️ Kteb rkn → montage jdid).
 Bla key / quota / ma3loumat na9sa: l bot kaygoul w kaysowl 🏷 / 📰 (titre katktbo nta). Models: Variable `GEMINI_MODELS` (ikhtiyari).
 Instagram / YouTube / X ymken ytlbo login men serveurs d GitHub: zid Secret `YTDLP_COOKIES` (contenu d `cookies.txt`, format Netscape).
 
