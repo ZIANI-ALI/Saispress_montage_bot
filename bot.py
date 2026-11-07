@@ -208,6 +208,11 @@ def platform_buttons(job_id: str) -> list:
     return [pl[:3], pl[3:], [{"text": f"🔥 {TRENDING}", "callback_data": f"sp:{job_id}:t"}]]
 
 
+def category_buttons(job_id: str) -> list:
+    b = [{"text": c, "callback_data": f"rk:{job_id}:{i}"} for i, c in enumerate(CATEGORIES)]
+    return [b[i:i + 3] for i in range(0, len(b), 3)] + [[{"text": "Saispress (bla rkn)", "callback_data": f"rk:{job_id}:n"}]]
+
+
 OUTRO_CHOICE = "🎞 Nzid l outro f l akhir?"
 
 
@@ -442,6 +447,26 @@ async def on_callback(cb: dict) -> None:
             return
         job.zoom = not job.zoom
         await api("answerCallbackQuery", callback_query_id=cb["id"])
+        await enqueue(job)
+        return
+    if data[:3] in ("rc:", "rk:"):  # videos d links: bddel rkn (lista) → montage jdid
+        parts = data.split(":")
+        job = jobs.get(parts[1])
+        if not job or not (job.src and job.src.exists()):
+            await api("answerCallbackQuery", callback_query_id=cb["id"],
+                      text="L original ma b9ach, 3awed sifet l link.", show_alert=True)
+            return
+        if job.queued:
+            await api("answerCallbackQuery", callback_query_id=cb["id"], text="Mazal kaytmonta.")
+            return
+        await api("answerCallbackQuery", callback_query_id=cb["id"])
+        if data.startswith("rc:"):
+            await say(chat_id, f"🏷 Khtar rkn (daba: <b>#{esc(job.category or 'Saispress')}</b>):",
+                      buttons=category_buttons(job.id))
+            return
+        job.category = None if parts[2] == "n" else CATEGORIES[int(parts[2])]
+        await api("editMessageText", chat_id=chat_id, message_id=cb["message"]["message_id"], parse_mode="HTML",
+                  text=f"🏷 Rkn → <b>#{esc(job.category or 'Saispress')}</b>")
         await enqueue(job)
         return
     if data.startswith("rt:"):
@@ -714,6 +739,8 @@ async def process(client: TelegramClient, job: Job) -> None:
         buttons = ([Button.inline("✏️ Bddel titre", data=f"rt:{job.id}".encode())] if job.with_title else []) + \
             [Button.inline("🔁 Ghir logo" if job.with_title else "🔁 Logo + titre", data=f"sw:{job.id}".encode())]
         rows = [buttons]
+        if job.url:  # videos d links: rkn (Gemini) y9der ytbddel
+            rows.append([Button.inline("🏷 Bddel rkn", data=f"rc:{job.id}".encode())])
         if frame is not None:  # 9:16 / 4:5: l version lokhra 3la 7sab l 7aja
             rows.append([Button.inline("📱 Version 9dima" if frame else "🖼 Version frame",
                                        data=f"vz:{job.id}".encode())])
