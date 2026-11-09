@@ -40,17 +40,25 @@ jobs:
 
       # ffmpeg (montage) + fribidi (Pillow kay7tajha l l 7rouf l 3arbiya mrbouta).
       # L .deb kaytkhbbaw f cache: mirror d Ubuntu mrat kay3tel (40 d9i9a) w kaybl3 l w9t d l bot.
+      # Key b version d Ubuntu (env.ImageOS makaynch f expressions → key kan dima b7al b7al,
+      # w .deb d 24.04 kaytkhltu m3a 26.04 → apt kaykhrbq).
+      - id: osver
+        run: echo "v=$(. /etc/os-release && echo "${ID}${VERSION_ID}")-$(dpkg --print-architecture)" >> "$GITHUB_OUTPUT"
+
       - id: debs
         uses: actions/cache/restore@v4
         with:
           path: ~/apt-debs
-          key: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}
+          key: apt-ffmpeg-v2-${{ steps.osver.outputs.v }}
 
       - run: |
           if ! command -v ffmpeg >/dev/null || ! dpkg -s libfribidi0 >/dev/null 2>&1; then
             if ls ~/apt-debs/*.deb >/dev/null 2>&1 && sudo dpkg -i ~/apt-debs/*.deb >/dev/null; then
               echo "ffmpeg mn l cache"
             else
+              # cache khayb: n9iw apt 9bl ma ninstalliw
+              sudo apt-get -f install -y -q || true
+              rm -rf ~/apt-debs
               mkdir -p ~/apt-debs/partial
               sudo apt-get update -q
               sudo apt-get install -y -q -o Dir::Cache::archives="$HOME/apt-debs" ffmpeg libfribidi0
@@ -68,6 +76,7 @@ jobs:
           key: ${{ steps.debs.outputs.cache-primary-key }}
 
       - name: Run bot
+        id: bot
         run: python bot.py
         env:
           VIDEO_BOT_TOKEN: ${{ secrets.VIDEO_BOT_TOKEN }}
@@ -83,7 +92,9 @@ jobs:
           TITLE_SECONDS: ${{ vars.TITLE_SECONDS || '4.2' }}
 
       - name: Lanci run jay (24/24)
-        if: ${{ !cancelled() && vars.VIDEO_BOT_ENABLED == 'true' }}
+        # Ghir ila l bot khdem (machi ila setup t7rq) → bla loop d runs fashlin.
+        # Ila t9at3at l chaîne, cron (30 d9i9a) kayrj3ha.
+        if: ${{ !cancelled() && vars.VIDEO_BOT_ENABLED == 'true' && steps.bot.outcome == 'success' }}
         run: gh workflow run montage-bot.yml --repo "$GITHUB_REPOSITORY" --ref main -f minutes=330
         env:
           GH_TOKEN: ${{ github.token }}
